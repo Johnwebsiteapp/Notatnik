@@ -7,9 +7,33 @@
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Notatnik">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Pasek instalacji PWA -->
+    <div id="install-banner" class="install-banner hidden">
+        <div class="install-banner-icon">
+            <img src="icon-192.png" alt="">
+        </div>
+        <div class="install-banner-text">
+            <strong>Zainstaluj Notatnik</strong>
+            <span>Szybszy dostęp bez paska przeglądarki</span>
+        </div>
+        <button id="install-accept" class="install-btn-primary">Zainstaluj</button>
+        <button id="install-dismiss" class="install-btn-dismiss" aria-label="Zamknij">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
     <div id="app">
         <!-- Ekran logowania -->
         <div id="auth-screen" class="screen">

@@ -622,5 +622,47 @@ document.querySelectorAll('.back-btn').forEach(btn => {
     });
 });
 
+// ===== PWA: Install prompt + Service Worker =====
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    // Show banner unless user previously dismissed it
+    if (localStorage.getItem('installDismissed') !== '1') {
+        document.getElementById('install-banner').classList.remove('hidden');
+    }
+});
+
+document.getElementById('install-accept').addEventListener('click', async () => {
+    const banner = document.getElementById('install-banner');
+    if (!deferredInstallPrompt) { banner.classList.add('hidden'); return; }
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    banner.classList.add('hidden');
+    if (outcome === 'dismissed') {
+        localStorage.setItem('installDismissed', '1');
+    }
+});
+
+document.getElementById('install-dismiss').addEventListener('click', () => {
+    document.getElementById('install-banner').classList.add('hidden');
+    localStorage.setItem('installDismissed', '1');
+});
+
+window.addEventListener('appinstalled', () => {
+    document.getElementById('install-banner').classList.add('hidden');
+    deferredInstallPrompt = null;
+});
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => {
+            console.error('SW registration failed:', err);
+        });
+    });
+}
+
 // ===== Init =====
 checkSession();
