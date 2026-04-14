@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Notatki</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Ekran główny -->
+        <div id="home-screen" class="screen active">
+            <div class="top-bar">
+                <button id="trash-mode-btn" class="top-btn" title="Tryb usuwania">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+                <button id="open-voice-btn" class="top-btn-wide accent" title="Notatka głosowa">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                </button>
+                <button id="open-text-btn" class="top-btn-wide accent" title="Notatka pisemna">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                        <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M6 16h12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="notes-list" class="notes-list">
+                <div id="empty-state" class="empty-state">
+                    <div class="empty-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                        </svg>
+                    </div>
+                    <p>Brak notatek</p>
+                    <p class="empty-hint">Wybierz mikrofon lub klawiaturę aby dodać notatkę</p>
+                </div>
+            </div>
+            <p id="swipe-hint" class="swipe-hint hidden">Przesuń notatkę w prawo aby usunąć</p>
+        </div>
+
+        <!-- Ekran notatki pisemnej -->
+        <div id="text-note-screen" class="screen">
+            <div class="top-bar">
+                <button class="top-btn back-btn" data-screen="home-screen">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <h2 class="screen-title">Notatka pisemna</h2>
+                <div class="spacer"></div>
+            </div>
+            <div class="note-form">
+                <input type="text" id="text-note-title" class="note-title-input" placeholder="Tytuł...">
+                <textarea id="text-note-content" class="note-content-input" placeholder="Wpisz treść notatki..."></textarea>
+                <div class="form-actions">
+                    <button id="discard-text" class="btn-secondary">Odrzuć</button>
+                    <button id="save-text-note" class="btn-primary">Zapisz</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ekran notatki głosowej -->
+        <div id="voice-note-screen" class="screen">
+            <div class="top-bar">
+                <button class="top-btn back-btn" data-screen="home-screen">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <h2 class="screen-title">Notatka głosowa</h2>
+                <div class="spacer"></div>
+            </div>
+            <div class="note-form">
+                <input type="text" id="voice-note-title" class="note-title-input" placeholder="Tytuł...">
+                <div class="voice-recorder">
+                    <div class="recorder-circle" id="recorder-circle">
+                        <svg id="mic-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                    </div>
+                    <div id="recorder-time" class="recorder-time">00:00</div>
+                    <div id="recording-status" class="recording-status">Kliknij aby nagrywać</div>
+                </div>
+                <div id="voice-note-content" class="voice-transcript" contenteditable="true" data-placeholder="Transkrypcja pojawi się tutaj..."></div>
+                <div class="form-actions">
+                    <button id="discard-voice" class="btn-secondary">Odrzuć</button>
+                    <button id="save-voice-note" class="btn-primary">Zapisz</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ekran podglądu notatki -->
+        <div id="view-note-screen" class="screen">
+            <div class="top-bar">
+                <button class="top-btn back-btn" data-screen="home-screen">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <h2 class="screen-title" id="view-note-type">Notatka</h2>
+                <button id="delete-from-view" class="top-btn danger" title="Usuń notatkę">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="note-view">
+                <h3 id="view-note-title"></h3>
+                <p id="view-note-date" class="note-date"></p>
+                <div id="view-note-content" class="note-content-display"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
