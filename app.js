@@ -1,25 +1,273 @@
-// ===== Storage =====
+// ===== Supabase config =====
+const SUPABASE_URL = 'https://lfajvdairiuqstkygrnp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmYWp2ZGFpcml1cXN0a3lncm5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzUyNTIsImV4cCI6MjA5MTc1MTI1Mn0.j7OeYS3plpkDdy75MMo_vhO9ZSBN8OWM_pUirNvxkI0';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true }
+});
+
+let currentUser = null;
+let syncInFlight = false;
+
+// ===== Storage (per user) =====
+function notesKey()    { return currentUser ? `notes:${currentUser.id}`    : null; }
+function lastSyncKey() { return currentUser ? `lastSync:${currentUser.id}` : null; }
+
 function getNotes() {
-    return JSON.parse(localStorage.getItem('notes') || '[]');
+    const k = notesKey();
+    if (!k) return [];
+    return JSON.parse(localStorage.getItem(k) || '[]');
 }
 
 function saveNotes(notes) {
-    localStorage.setItem('notes', JSON.stringify(notes));
+    const k = notesKey();
+    if (!k) return;
+    localStorage.setItem(k, JSON.stringify(notes));
+}
+
+function visibleNotes() {
+    return getNotes()
+        .filter(n => !n.deletedAt)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function nowIso() { return new Date().toISOString(); }
+
+function uuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    // Fallback
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
 }
 
 function addNote(note) {
     const notes = getNotes();
-    note.id = Date.now().toString();
-    note.createdAt = new Date().toISOString();
+    note.id = uuid();
+    note.createdAt = nowIso();
+    note.updatedAt = note.createdAt;
+    note.deletedAt = null;
+    note.pending = true;
     notes.unshift(note);
     saveNotes(notes);
+    scheduleSync();
     return note;
 }
 
 function deleteNote(id) {
-    const notes = getNotes().filter(n => n.id !== id);
+    const notes = getNotes();
+    const n = notes.find(x => x.id === id);
+    if (!n) return;
+    n.deletedAt = nowIso();
+    n.updatedAt = n.deletedAt;
+    n.pending = true;
     saveNotes(notes);
+    scheduleSync();
 }
+
+// ===== Sync =====
+function setSyncStatus(status) {
+    const ind = document.getElementById('sync-indicator');
+    if (!ind) return;
+    ind.classList.remove('synced', 'syncing', 'offline', 'error');
+    ind.classList.add(status);
+    const titles = {
+        synced:  'Zsynchronizowano',
+        syncing: 'Synchronizacja...',
+        offline: 'Offline — zmiany zapiszą się lokalnie',
+        error:   'Błąd synchronizacji — spróbuję ponownie'
+    };
+    ind.title = titles[status] || '';
+}
+
+function scheduleSync() {
+    // Debounce
+    clearTimeout(scheduleSync._t);
+    scheduleSync._t = setTimeout(sync, 300);
+}
+
+async function sync() {
+    if (syncInFlight || !currentUser) return;
+    if (!navigator.onLine) { setSyncStatus('offline'); return; }
+
+    syncInFlight = true;
+    setSyncStatus('syncing');
+
+    try {
+        const notes = getNotes();
+        const byId = new Map(notes.map(n => [n.id, n]));
+
+        // 1) PUSH pending local changes
+        const pending = notes.filter(n => n.pending);
+        for (const n of pending) {
+            const payload = {
+                id: n.id,
+                user_id: currentUser.id,
+                title: n.title || '',
+                content: n.content || '',
+                type: n.type,
+                created_at: n.createdAt,
+                updated_at: n.updatedAt,
+                deleted_at: n.deletedAt
+            };
+            const { data, error } = await sb.from('notes').upsert(payload).select().single();
+            if (error) throw error;
+            // Update local with server timestamps
+            n.updatedAt = data.updated_at;
+            n.createdAt = data.created_at;
+            n.deletedAt = data.deleted_at;
+            n.pending = false;
+        }
+        saveNotes(Array.from(byId.values()));
+
+        // 2) PULL remote changes since last sync
+        const lastSync = localStorage.getItem(lastSyncKey());
+        let q = sb.from('notes').select('*').eq('user_id', currentUser.id);
+        if (lastSync) q = q.gt('updated_at', lastSync);
+        const { data: remote, error: pullErr } = await q;
+        if (pullErr) throw pullErr;
+
+        let pullStamp = lastSync;
+        for (const r of remote) {
+            const local = byId.get(r.id);
+            const remoteNote = {
+                id: r.id,
+                title: r.title,
+                content: r.content,
+                type: r.type,
+                createdAt: r.created_at,
+                updatedAt: r.updated_at,
+                deletedAt: r.deleted_at,
+                pending: false
+            };
+            if (!local || new Date(r.updated_at) >= new Date(local.updatedAt)) {
+                // Don't clobber unpushed local changes
+                if (!local || !local.pending) byId.set(r.id, remoteNote);
+            }
+            if (!pullStamp || r.updated_at > pullStamp) pullStamp = r.updated_at;
+        }
+
+        saveNotes(Array.from(byId.values()));
+        if (pullStamp) localStorage.setItem(lastSyncKey(), pullStamp);
+
+        setSyncStatus('synced');
+        if (document.getElementById('home-screen').classList.contains('active')) {
+            renderNotes();
+        }
+    } catch (err) {
+        console.error('Sync error:', err);
+        setSyncStatus('error');
+    } finally {
+        syncInFlight = false;
+    }
+}
+
+window.addEventListener('online',  () => { setSyncStatus('synced'); sync(); });
+window.addEventListener('offline', () => setSyncStatus('offline'));
+window.addEventListener('focus',   () => { if (currentUser) sync(); });
+
+// ===== Auth =====
+async function checkSession() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+        onLoggedIn(session.user);
+    } else {
+        showScreen('auth-screen');
+    }
+}
+
+function onLoggedIn(user) {
+    currentUser = user;
+    document.getElementById('user-email').textContent = user.email;
+    setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
+    showScreen('home-screen');
+    sync();
+    subscribeRealtime();
+}
+
+let realtimeChannel = null;
+function subscribeRealtime() {
+    if (realtimeChannel) sb.removeChannel(realtimeChannel);
+    realtimeChannel = sb.channel(`notes:${currentUser.id}`)
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${currentUser.id}` },
+            () => scheduleSync())
+        .subscribe();
+}
+
+sb.auth.onAuthStateChange((_event, session) => {
+    if (session && !currentUser) onLoggedIn(session.user);
+});
+
+// ===== Auth UI =====
+let authMode = 'login'; // 'login' | 'signup'
+
+function setAuthMode(mode) {
+    authMode = mode;
+    document.getElementById('auth-subtitle').textContent = mode === 'login'
+        ? 'Zaloguj się, aby synchronizować notatki'
+        : 'Utwórz konto — notatki będą dostępne na każdym urządzeniu';
+    document.getElementById('auth-submit').textContent = mode === 'login' ? 'Zaloguj się' : 'Zarejestruj się';
+    document.getElementById('auth-toggle').textContent = mode === 'login'
+        ? 'Nie masz konta? Zarejestruj się'
+        : 'Masz już konto? Zaloguj się';
+    showAuthError('');
+}
+
+function showAuthError(msg) {
+    const el = document.getElementById('auth-error');
+    if (!msg) { el.classList.add('hidden'); return; }
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+document.getElementById('auth-toggle').addEventListener('click', () => {
+    setAuthMode(authMode === 'login' ? 'signup' : 'login');
+});
+
+document.getElementById('auth-submit').addEventListener('click', async () => {
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    if (!email || !password) { showAuthError('Podaj email i hasło.'); return; }
+    if (password.length < 6) { showAuthError('Hasło musi mieć co najmniej 6 znaków.'); return; }
+
+    const btn = document.getElementById('auth-submit');
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = '...';
+
+    try {
+        const fn = authMode === 'login' ? 'signInWithPassword' : 'signUp';
+        const { data, error } = await sb.auth[fn]({ email, password });
+        if (error) { showAuthError(error.message); return; }
+        if (data.user && data.session) {
+            onLoggedIn(data.user);
+        } else if (data.user && !data.session) {
+            showAuthError('Sprawdź email i potwierdź konto, potem zaloguj się.');
+            setAuthMode('login');
+        }
+    } catch (e) {
+        showAuthError(e.message || 'Nieoczekiwany błąd.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+});
+
+document.getElementById('auth-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('auth-submit').click();
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+    if (!confirm('Wylogować? Notatki zostaną na serwerze.')) return;
+    if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+    await sb.auth.signOut();
+    currentUser = null;
+    showScreen('auth-screen');
+    document.getElementById('auth-email').value = '';
+    document.getElementById('auth-password').value = '';
+});
 
 // ===== Navigation =====
 function showScreen(screenId) {
@@ -31,11 +279,10 @@ function showScreen(screenId) {
 // ===== Render notes list =====
 function renderNotes() {
     const list = document.getElementById('notes-list');
-    const notes = getNotes();
+    const notes = visibleNotes();
     const emptyState = document.getElementById('empty-state');
     const swipeHint = document.getElementById('swipe-hint');
 
-    // Remove all note cards
     list.querySelectorAll('.note-card-wrapper').forEach(c => c.remove());
 
     if (notes.length === 0) {
@@ -87,7 +334,6 @@ function renderNotes() {
 
         const card = wrapper.querySelector('.note-card');
 
-        // Delete button (desktop)
         wrapper.querySelector('.note-card-delete').addEventListener('click', (e) => {
             e.stopPropagation();
             if (confirm('Czy na pewno chcesz usunąć tę notatkę?')) {
@@ -96,16 +342,11 @@ function renderNotes() {
             }
         });
 
-        // Click to view
         card.addEventListener('click', () => {
-            if (!card.classList.contains('swiped')) {
-                viewNote(note.id);
-            }
+            if (!card.classList.contains('swiped')) viewNote(note.id);
         });
 
-        // Swipe to delete
         setupSwipe(wrapper, card, note.id);
-
         list.appendChild(wrapper);
     });
 }
@@ -127,7 +368,6 @@ function setupSwipe(wrapper, card, noteId) {
     card.addEventListener('touchmove', (e) => {
         if (!isDragging) return;
         currentX = e.touches[0].clientX - startX;
-        // Only allow right swipe
         if (currentX < 0) currentX = 0;
         card.style.transform = `translateX(${currentX}px)`;
     }, { passive: true });
@@ -137,25 +377,16 @@ function setupSwipe(wrapper, card, noteId) {
         card.classList.remove('swiping');
 
         if (currentX > threshold) {
-            // Swipe complete - delete
             card.style.transition = 'transform 0.3s ease';
             card.style.transform = `translateX(${window.innerWidth}px)`;
-            setTimeout(() => {
-                deleteNote(noteId);
-                renderNotes();
-            }, 300);
+            setTimeout(() => { deleteNote(noteId); renderNotes(); }, 300);
         } else {
-            // Snap back
             card.style.transition = 'transform 0.2s ease';
             card.style.transform = 'translateX(0)';
         }
-
-        setTimeout(() => {
-            card.style.transition = '';
-        }, 300);
+        setTimeout(() => { card.style.transition = ''; }, 300);
     });
 
-    // Mouse support for desktop
     card.addEventListener('mousedown', (e) => {
         startX = e.clientX;
         currentX = 0;
@@ -179,20 +410,16 @@ function setupSwipe(wrapper, card, noteId) {
         if (currentX > threshold) {
             card.style.transition = 'transform 0.3s ease';
             card.style.transform = `translateX(${window.innerWidth}px)`;
-            setTimeout(() => {
-                deleteNote(noteId);
-                renderNotes();
-            }, 300);
+            setTimeout(() => { deleteNote(noteId); renderNotes(); }, 300);
         } else {
             card.style.transition = 'transform 0.2s ease';
             card.style.transform = 'translateX(0)';
         }
-
-        setTimeout(() => {
-            card.style.transition = '';
-        }, 300);
+        setTimeout(() => { card.style.transition = ''; }, 300);
     });
 }
+
+let currentViewNoteId = null;
 
 function viewNote(id) {
     const note = getNotes().find(n => n.id === id);
@@ -211,8 +438,6 @@ function viewNote(id) {
 
     showScreen('view-note-screen');
 }
-
-let currentViewNoteId = null;
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -245,11 +470,9 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
     document.getElementById('recorder-circle').classList.remove('recording');
     showScreen('voice-note-screen');
 
-    // Od razu włącz nagrywanie
     setTimeout(() => startRecording(), 200);
 });
 
-// Trash mode button (currently shows hint)
 document.getElementById('trash-mode-btn').addEventListener('click', () => {
     const hint = document.getElementById('swipe-hint');
     hint.classList.toggle('hidden');
@@ -261,10 +484,7 @@ document.getElementById('save-text-note').addEventListener('click', () => {
     const title = document.getElementById('text-note-title').value.trim();
     const content = document.getElementById('text-note-content').value.trim();
 
-    if (!content && !title) {
-        alert('Wpisz treść notatki.');
-        return;
-    }
+    if (!content && !title) { alert('Wpisz treść notatki.'); return; }
 
     addNote({ title, content, type: 'text' });
     showScreen('home-screen');
@@ -287,11 +507,8 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
         alert('Twoja przeglądarka nie wspiera rozpoznawania mowy. Użyj Chrome lub Edge.');
         return;
     }
-    if (isRecording) {
-        stopRecording();
-    } else {
-        startRecording();
-    }
+    if (isRecording) stopRecording();
+    else startRecording();
 });
 
 function startRecording() {
@@ -309,16 +526,11 @@ function startRecording() {
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
             const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-                finalChunk += transcript;
-            } else {
-                interim += transcript;
-            }
+            if (event.results[i].isFinal) finalChunk += transcript;
+            else interim += transcript;
         }
 
-        if (finalChunk) {
-            finalTranscript += finalChunk;
-        }
+        if (finalChunk) finalTranscript += finalChunk;
 
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
@@ -345,13 +557,9 @@ function startRecording() {
     recognition.start();
     isRecording = true;
 
-    // Timer
     recSeconds = 0;
     updateTimerDisplay();
-    recTimer = setInterval(() => {
-        recSeconds++;
-        updateTimerDisplay();
-    }, 1000);
+    recTimer = setInterval(() => { recSeconds++; updateTimerDisplay(); }, 1000);
 
     document.getElementById('recorder-circle').classList.add('recording');
     document.getElementById('recording-status').textContent = 'Nagrywanie...';
@@ -364,11 +572,7 @@ function stopRecording() {
         recognition.stop();
         recognition = null;
     }
-
-    if (recTimer) {
-        clearInterval(recTimer);
-        recTimer = null;
-    }
+    if (recTimer) { clearInterval(recTimer); recTimer = null; }
 
     document.getElementById('recorder-circle').classList.remove('recording');
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
@@ -390,10 +594,7 @@ document.getElementById('save-voice-note').addEventListener('click', () => {
     const title = document.getElementById('voice-note-title').value.trim();
     const content = document.getElementById('voice-note-content').textContent.trim();
 
-    if (!content && !title) {
-        alert('Nagraj lub wpisz treść notatki.');
-        return;
-    }
+    if (!content && !title) { alert('Nagraj lub wpisz treść notatki.'); return; }
 
     addNote({ title, content, type: 'voice' });
     showScreen('home-screen');
@@ -422,4 +623,4 @@ document.querySelectorAll('.back-btn').forEach(btn => {
 });
 
 // ===== Init =====
-renderNotes();
+checkSession();

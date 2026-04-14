@@ -525,6 +525,114 @@ body {
     text-align: center;
 }
 
+/* ===== Auth Screen ===== */
+.auth-container {
+    max-width: 380px;
+    margin: 0 auto;
+    padding: 60px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.auth-logo {
+    width: 96px;
+    height: 96px;
+    border-radius: 24px;
+    background: var(--amber-glow);
+    border: 1.5px solid var(--amber-dim);
+    color: var(--amber);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.auth-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--amber);
+    margin-bottom: 8px;
+}
+
+.auth-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+}
+
+.auth-error {
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    text-align: left;
+}
+.auth-error.hidden {
+    display: none;
+}
+
+/* ===== User Bar ===== */
+.user-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.user-email {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sync-indicator {
+    font-size: 10px;
+    line-height: 1;
+}
+.sync-indicator.synced   { color: #5fa86d; }
+.sync-indicator.syncing  { color: var(--amber); animation: pulse-sync 1s ease-in-out infinite; }
+.sync-indicator.offline  { color: var(--text-dim); }
+.sync-indicator.error    { color: var(--danger); }
+
+@keyframes pulse-sync {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+}
+
+.user-btn {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+.user-btn:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: var(--danger-bg);
+}
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
     width: 4px;
