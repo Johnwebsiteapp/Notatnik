@@ -901,30 +901,6 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
     }
 });
 
-// Holding an active MediaStream while recognition runs helps suppress the
-// Android system earcons ("beep") that Chrome plays on recognition start/end.
-let micStream = null;
-async function acquireMicStream() {
-    if (micStream) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-    try {
-        micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
-        });
-    } catch (e) {
-        console.warn('getUserMedia failed (OS beep may stay):', e);
-    }
-}
-function releaseMicStream() {
-    if (!micStream) return;
-    try { micStream.getTracks().forEach(t => t.stop()); } catch (e) { /* ignore */ }
-    micStream = null;
-}
-
 // Wake Lock: keep screen on during recording
 async function acquireWakeLock() {
     if (!('wakeLock' in navigator)) return;
@@ -985,8 +961,8 @@ function buildRecognition() {
     r.onstart = () => { sessionActive = true; };
 
     r.onresult = (event) => {
-        if (!sessionActive) return;
-
+        // No sessionActive guard — onresult can fire before onstart on some
+        // Android builds; dedup (tryCommitFinal) already handles stragglers.
         let interim = '';
         // Walk from resultIndex (where the new/changed results begin) to end.
         const startIdx = typeof event.resultIndex === 'number' ? event.resultIndex : 0;
@@ -1034,17 +1010,17 @@ function buildRecognition() {
     return r;
 }
 
-async function startRecording() {
-    // Acquire MediaStream BEFORE recognition.start so the mic is already
-    // live when the speech engine attaches — this is what suppresses the
-    // Android earcon on modern Chrome.
-    await acquireMicStream();
-
+function startRecording() {
     recognition = buildRecognition();
     if (!recognition) return;
     sessionActive = false;
     recentCommits = [];
-    recognition.start();
+    try {
+        recognition.start();
+    } catch (e) {
+        console.error('recognition.start failed:', e);
+        return;
+    }
     isRecording = true;
     acquireWakeLock();
 
@@ -1068,7 +1044,6 @@ function stopRecording() {
     }
     if (recTimer) { clearInterval(recTimer); recTimer = null; }
     releaseWakeLock();
-    releaseMicStream();
 
     const circle = document.getElementById('recorder-circle');
     const status = document.getElementById('recording-status');
