@@ -58,32 +58,19 @@
             </div>
         </div>
 
-        <!-- Główny pager: 3 panele (kosz | główny | profil) -->
+        <!-- Główny pager: 2 panele (główny | profil) -->
         <div id="pager" class="pager hidden">
             <div id="pager-track" class="pager-track">
 
-                <!-- Panel 0: Kosz -->
-                <section class="page" id="trash-page">
-                    <div class="top-bar">
-                        <h2 class="screen-title">Kosz</h2>
-                    </div>
-                    <div id="trash-list" class="notes-list">
-                        <div id="trash-empty" class="empty-state">
-                            <div class="empty-icon">
-                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4">
-                                    <polyline points="3 6 5 6 21 6"></polyline>
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                </svg>
-                            </div>
-                            <p>Kosz jest pusty</p>
-                            <p class="empty-hint">Usunięte notatki pojawią się tutaj</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Panel 1: Główny -->
+                <!-- Panel 0: Główny -->
                 <section class="page" id="home-page">
                     <div class="top-bar">
+                        <button id="open-trash-btn" class="top-btn" title="Kosz">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
                         <button id="open-voice-btn" class="top-btn-wide accent" title="Notatka głosowa">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -150,9 +137,33 @@
 
             <!-- Kropki-indykator strony -->
             <div class="pager-dots">
-                <span class="pager-dot" data-page="0" aria-label="Kosz"></span>
-                <span class="pager-dot active" data-page="1" aria-label="Główny"></span>
-                <span class="pager-dot" data-page="2" aria-label="Profil"></span>
+                <span class="pager-dot active" data-page="0" aria-label="Główny"></span>
+                <span class="pager-dot" data-page="1" aria-label="Profil"></span>
+            </div>
+        </div>
+
+        <!-- Kosz (overlay) -->
+        <div id="trash-screen" class="screen">
+            <div class="top-bar">
+                <button class="top-btn back-btn" data-screen="pager">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                <h2 class="screen-title">Kosz</h2>
+                <div class="spacer"></div>
+            </div>
+            <div id="trash-list" class="notes-list">
+                <div id="trash-empty" class="empty-state">
+                    <div class="empty-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </div>
+                    <p>Kosz jest pusty</p>
+                    <p class="empty-hint">Usunięte notatki pojawią się tutaj</p>
+                </div>
             </div>
         </div>
 

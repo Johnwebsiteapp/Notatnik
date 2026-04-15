@@ -240,11 +240,9 @@ function onLoggedIn(user) {
     setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
     hideAllOverlays();
     document.getElementById('pager').classList.remove('hidden');
-    // Wait for pager layout pass before positioning the track to page 1,
-    // otherwise the leftmost (trash) panel flashes for one frame.
     requestAnimationFrame(() => {
         layoutPager();
-        setPage(1, false);
+        setPage(0, false); // start on Home
     });
     sync();
     subscribeRealtime();
@@ -360,8 +358,10 @@ function hideAllOverlays() {
 // =============================================================================
 // Pager (swipe between 3 pages)
 // =============================================================================
-let currentPage = 1; // 0 = trash, 1 = home, 2 = profile
+let currentPage = 0; // 0 = home, 1 = profile
 let pagerWidth = 0;
+const LAST_PAGE = 1;
+const CARD_DELETE_THRESHOLD = 120; // px swipe-right on a card to trash it
 
 function layoutPager() {
     const pager = document.getElementById('pager');
@@ -380,50 +380,58 @@ function applyPageTransform(animate) {
 }
 
 function setPage(idx, animate = true) {
-    currentPage = Math.max(0, Math.min(2, idx));
+    currentPage = Math.max(0, Math.min(LAST_PAGE, idx));
     applyPageTransform(animate);
     document.querySelectorAll('.pager-dot').forEach((d, i) => {
         d.classList.toggle('active', i === currentPage);
     });
-    if (currentPage === 0) renderTrash();
-    else if (currentPage === 1) renderNotes();
+    if (currentPage === 0) renderNotes();
 }
 
 // Track whether last gesture was a horizontal swipe — used to suppress card clicks
 let pagerSwipedRecently = false;
 
-// Touch swipe
-(function setupPagerSwipe() {
+// Gestures:
+//   - Finger starts on a note-card AND moves RIGHT → card-swipe-to-trash
+//   - Finger starts elsewhere OR moves LEFT          → pager swipe (home ↔ profile)
+//   - Finger moves mostly vertically                 → native scroll
+(function setupSwipeGestures() {
     const pager = document.getElementById('pager');
     const track = document.getElementById('pager-track');
-    let startX = 0, startY = 0, dx = 0, dragging = false, axis = null;
-    const EDGE_OVERSHOOT_DAMP = 0.35;
-    const SWIPE_THRESHOLD_FRAC = 0.2; // 20% of screen triggers page change
+    let startX = 0, startY = 0, dx = 0;
+    let dragging = false;
+    let axis = null;     // 'x' | 'y' | null
+    let mode = null;     // 'card' | 'pager' | null (decided after axis=x)
+    let cardEl = null;   // when mode==='card'
 
-    // Only the pager dots and form controls block swipe start.
-    // Note cards and empty areas all allow swipe — a horizontal finger drag
-    // across a card scrolls the pager, not opens the card.
-    function isInteractiveTarget(el) {
-        return !!el.closest('input, textarea, [contenteditable="true"], .pager-dot');
+    const EDGE_OVERSHOOT_DAMP = 0.35;
+    const SWIPE_THRESHOLD_FRAC = 0.2; // 20% of screen = page change
+
+    function blockedTarget(el) {
+        return !!el.closest('input, textarea, [contenteditable="true"], .pager-dot, .note-card-action-btn');
     }
 
-    pager.addEventListener('touchstart', (e) => {
-        pagerSwipedRecently = false;
-        if (isInteractiveTarget(e.target)) { dragging = false; return; }
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        dx = 0;
-        dragging = true;
-        axis = null;
-        track.style.transition = 'none';
-    }, { passive: true });
+    function findCard(target) {
+        return target && target.closest ? target.closest('.note-card-wrapper .note-card') : null;
+    }
 
-    pager.addEventListener('touchmove', (e) => {
+    function begin(clientX, clientY, target) {
+        pagerSwipedRecently = false;
+        if (blockedTarget(target)) { dragging = false; return; }
+        startX = clientX;
+        startY = clientY;
+        dx = 0;
+        axis = null;
+        mode = null;
+        cardEl = currentPage === 0 ? findCard(target) : null;
+        dragging = true;
+        track.style.transition = 'none';
+    }
+
+    function move(clientX, clientY) {
         if (!dragging) return;
-        const cx = e.touches[0].clientX;
-        const cy = e.touches[0].clientY;
-        const ddx = cx - startX;
-        const ddy = cy - startY;
+        const ddx = clientX - startX;
+        const ddy = clientY - startY;
 
         if (!axis) {
             if (Math.abs(ddx) > 8 || Math.abs(ddy) > 8) {
@@ -431,65 +439,74 @@ let pagerSwipedRecently = false;
             }
         }
         if (axis !== 'x') return;
-
         dx = ddx;
         if (Math.abs(dx) > 10) pagerSwipedRecently = true;
-        // Dampen overshoot at edges
-        if ((currentPage === 0 && dx > 0) || (currentPage === 2 && dx < 0)) {
-            dx = dx * EDGE_OVERSHOOT_DAMP;
-        }
-        const totalPx = -currentPage * pagerWidth + dx;
-        track.style.transform = `translate3d(${totalPx}px, 0, 0)`;
-    }, { passive: true });
 
-    pager.addEventListener('touchend', () => {
+        if (!mode) {
+            // Decide which gesture at first horizontal motion
+            mode = (cardEl && dx > 0) ? 'card' : 'pager';
+        }
+
+        if (mode === 'card') {
+            // Only allow rightward swipe on a card
+            const clamped = Math.max(0, dx);
+            cardEl.style.transform = `translateX(${clamped}px)`;
+            cardEl.classList.add('swiping');
+        } else {
+            // Pager swipe (any horizontal direction)
+            let damped = dx;
+            if ((currentPage === 0 && dx > 0) || (currentPage === LAST_PAGE && dx < 0)) {
+                damped = dx * EDGE_OVERSHOOT_DAMP;
+            }
+            const totalPx = -currentPage * pagerWidth + damped;
+            track.style.transform = `translate3d(${totalPx}px, 0, 0)`;
+        }
+    }
+
+    function end() {
         if (!dragging) return;
         dragging = false;
-        if (axis !== 'x') { applyPageTransform(true); return; }
 
-        const threshold = pagerWidth * SWIPE_THRESHOLD_FRAC;
-        let next = currentPage;
-        if (dx > threshold)      next = currentPage - 1;
-        else if (dx < -threshold) next = currentPage + 1;
-        setPage(next, true);
-    });
+        if (axis !== 'x' || !mode) { applyPageTransform(true); return; }
 
-    // Mouse drag for desktop (optional nice-to-have)
-    let mDragging = false;
-    pager.addEventListener('mousedown', (e) => {
-        if (isInteractiveTarget(e.target)) return;
-        startX = e.clientX; startY = e.clientY;
-        dx = 0; axis = null; mDragging = true;
-        track.style.transition = 'none';
-    });
-    window.addEventListener('mousemove', (e) => {
-        if (!mDragging) return;
-        const ddx = e.clientX - startX;
-        const ddy = e.clientY - startY;
-        if (!axis) {
-            if (Math.abs(ddx) > 8 || Math.abs(ddy) > 8) {
-                axis = Math.abs(ddx) > Math.abs(ddy) ? 'x' : 'y';
+        if (mode === 'card' && cardEl) {
+            cardEl.classList.remove('swiping');
+            if (dx > CARD_DELETE_THRESHOLD) {
+                const noteId = cardEl.dataset.id;
+                cardEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+                cardEl.style.transform = `translateX(${pagerWidth}px)`;
+                cardEl.style.opacity = '0';
+                setTimeout(() => {
+                    trashNote(noteId);
+                    renderNotes();
+                    renderTrash();
+                }, 260);
+            } else {
+                cardEl.style.transition = 'transform 0.2s ease';
+                cardEl.style.transform = 'translateX(0)';
+                setTimeout(() => { cardEl.style.transition = ''; cardEl.style.transform = ''; }, 220);
             }
+        } else if (mode === 'pager') {
+            const threshold = pagerWidth * SWIPE_THRESHOLD_FRAC;
+            let next = currentPage;
+            if (dx > threshold)      next = currentPage - 1;
+            else if (dx < -threshold) next = currentPage + 1;
+            setPage(next, true);
         }
-        if (axis !== 'x') return;
-        dx = ddx;
-        if (Math.abs(dx) > 10) pagerSwipedRecently = true;
-        if ((currentPage === 0 && dx > 0) || (currentPage === 2 && dx < 0)) {
-            dx = dx * EDGE_OVERSHOOT_DAMP;
-        }
-        const totalPx = -currentPage * pagerWidth + dx;
-        track.style.transform = `translate3d(${totalPx}px, 0, 0)`;
-    });
-    window.addEventListener('mouseup', () => {
-        if (!mDragging) return;
-        mDragging = false;
-        if (axis !== 'x') { applyPageTransform(true); return; }
-        const threshold = pagerWidth * SWIPE_THRESHOLD_FRAC;
-        let next = currentPage;
-        if (dx > threshold)      next = currentPage - 1;
-        else if (dx < -threshold) next = currentPage + 1;
-        setPage(next, true);
-    });
+
+        mode = null;
+        cardEl = null;
+    }
+
+    pager.addEventListener('touchstart', (e) => begin(e.touches[0].clientX, e.touches[0].clientY, e.target), { passive: true });
+    pager.addEventListener('touchmove',  (e) => move(e.touches[0].clientX, e.touches[0].clientY),              { passive: true });
+    pager.addEventListener('touchend',   end);
+    pager.addEventListener('touchcancel', end);
+
+    // Mouse drag (desktop)
+    pager.addEventListener('mousedown',  (e) => begin(e.clientX, e.clientY, e.target));
+    window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
+    window.addEventListener('mouseup',   end);
 })();
 
 // Dots tap to jump
@@ -536,32 +553,24 @@ function renderNotes() {
         const wrapper = document.createElement('div');
         wrapper.className = 'note-card-wrapper';
         wrapper.innerHTML = `
+            <div class="note-card-bg">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Do kosza
+            </div>
             <div class="note-card" data-id="${note.id}">
                 <div class="note-card-icon">${noteIconSvg(note.type)}</div>
                 <div class="note-card-body">
                     <div class="note-card-preview">${escapeHtml(note.content)}</div>
                     <div class="note-card-date">${formatDate(note.createdAt)}</div>
                 </div>
-                <div class="note-card-actions">
-                    <button class="note-card-action-btn purge" title="Usuń" aria-label="Usuń">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                    </button>
-                </div>
             </div>
         `;
-
         const card = wrapper.querySelector('.note-card');
-        wrapper.querySelector('.note-card-action-btn.purge').addEventListener('click', (e) => {
-            e.stopPropagation();
-            trashNote(note.id);
-            renderNotes();
-            renderTrash();
-        });
-        card.addEventListener('click', (e) => {
-            // Swallow the click if it was tail of a horizontal pager swipe
+        card.addEventListener('click', () => {
+            // Swallow click if it was the tail of a horizontal gesture (swipe)
             if (pagerSwipedRecently) { pagerSwipedRecently = false; return; }
             viewNote(note.id);
         });
@@ -650,6 +659,11 @@ document.getElementById('delete-from-view').addEventListener('click', () => {
 // =============================================================================
 // New note buttons (text + voice)
 // =============================================================================
+document.getElementById('open-trash-btn').addEventListener('click', () => {
+    renderTrash();
+    showOverlay('trash-screen');
+});
+
 document.getElementById('open-text-btn').addEventListener('click', () => {
     document.getElementById('text-note-content').value = '';
     showOverlay('text-note-screen');
