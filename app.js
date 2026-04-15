@@ -500,6 +500,7 @@ let isRecording = false;
 let finalTranscript = '';
 let recTimer = null;
 let recSeconds = 0;
+let seenFinalIndices = new Set(); // fix for Android Chrome duplicating onresult events
 
 document.getElementById('recorder-circle').addEventListener('click', () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -515,6 +516,7 @@ function startRecording() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
+    seenFinalIndices.clear();
     recognition = new SpeechRecognition();
     recognition.lang = 'pl-PL';
     recognition.continuous = true;
@@ -522,15 +524,22 @@ function startRecording() {
 
     recognition.onresult = (event) => {
         let interim = '';
-        let finalChunk = '';
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) finalChunk += transcript;
-            else interim += transcript;
+        // Walk ALL results and only commit finals we haven't seen yet in this session.
+        // event.resultIndex is unreliable on Android Chrome (Xiaomi/MIUI) — it may stay
+        // at 0 and re-emit the same final result causing 10-20x duplication.
+        for (let i = 0; i < event.results.length; i++) {
+            const result = event.results[i];
+            const transcript = result[0].transcript;
+            if (result.isFinal) {
+                if (!seenFinalIndices.has(i)) {
+                    finalTranscript += transcript;
+                    seenFinalIndices.add(i);
+                }
+            } else {
+                interim += transcript;
+            }
         }
-
-        if (finalChunk) finalTranscript += finalChunk;
 
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
@@ -549,8 +558,16 @@ function startRecording() {
     };
 
     recognition.onend = () => {
+        // New session — results list resets, so our seen-set must reset too.
+        seenFinalIndices.clear();
         if (isRecording) {
-            try { recognition.start(); } catch (e) { stopRecording(); }
+            // Small delay so the browser fully tears down the old session before we
+            // start a new one (avoids race that also contributes to duplicates).
+            setTimeout(() => {
+                if (isRecording) {
+                    try { recognition.start(); } catch (e) { stopRecording(); }
+                }
+            }, 120);
         }
     };
 
