@@ -319,7 +319,6 @@ function renderNotes() {
             <div class="note-card" data-id="${note.id}">
                 <div class="note-card-icon">${iconSvg}</div>
                 <div class="note-card-body">
-                    <div class="note-card-title">${escapeHtml(note.title || 'Bez tytułu')}</div>
                     <div class="note-card-preview">${escapeHtml(note.content)}</div>
                     <div class="note-card-date">${dateStr}</div>
                 </div>
@@ -426,7 +425,6 @@ function viewNote(id) {
     if (!note) return;
 
     currentViewNoteId = id;
-    document.getElementById('view-note-title').textContent = note.title || 'Bez tytułu';
     document.getElementById('view-note-type').textContent = note.type === 'voice' ? 'Notatka głosowa' : 'Notatka pisemna';
     document.getElementById('view-note-content').textContent = note.content;
 
@@ -447,10 +445,9 @@ function escapeHtml(text) {
 
 // ===== Top Bar Buttons =====
 document.getElementById('open-text-btn').addEventListener('click', () => {
-    document.getElementById('text-note-title').value = '';
     document.getElementById('text-note-content').value = '';
     showScreen('text-note-screen');
-    document.getElementById('text-note-title').focus();
+    document.getElementById('text-note-content').focus();
 });
 
 document.getElementById('open-voice-btn').addEventListener('click', () => {
@@ -460,7 +457,6 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
         return;
     }
 
-    document.getElementById('voice-note-title').value = '';
     document.getElementById('voice-note-content').textContent = '';
     finalTranscript = '';
     recSeconds = 0;
@@ -481,12 +477,11 @@ document.getElementById('trash-mode-btn').addEventListener('click', () => {
 
 // ===== Text Note Save/Discard =====
 document.getElementById('save-text-note').addEventListener('click', () => {
-    const title = document.getElementById('text-note-title').value.trim();
     const content = document.getElementById('text-note-content').value.trim();
 
-    if (!content && !title) { alert('Wpisz treść notatki.'); return; }
+    if (!content) { alert('Wpisz treść notatki.'); return; }
 
-    addNote({ title, content, type: 'text' });
+    addNote({ title: '', content, type: 'text' });
     showScreen('home-screen');
 });
 
@@ -640,12 +635,11 @@ function updateTimerDisplay() {
 document.getElementById('save-voice-note').addEventListener('click', () => {
     stopRecording();
 
-    const title = document.getElementById('voice-note-title').value.trim();
     const content = document.getElementById('voice-note-content').textContent.trim();
 
-    if (!content && !title) { alert('Nagraj lub wpisz treść notatki.'); return; }
+    if (!content) { alert('Nagraj treść notatki.'); return; }
 
-    addNote({ title, content, type: 'voice' });
+    addNote({ title: '', content, type: 'voice' });
     showScreen('home-screen');
 });
 
