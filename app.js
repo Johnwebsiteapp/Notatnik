@@ -9,6 +9,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let currentUser = null;
 let syncInFlight = false;
 let currentViewNoteId = null;
+let currentEditNoteId = null; // if set, save updates instead of adds
 let realtimeChannel = null;
 
 // =============================================================================
@@ -59,7 +60,11 @@ function saveNotes(notes) {
 function visibleNotes() {
     return getNotes()
         .filter(n => !n.deletedAt)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        .sort((a, b) => {
+            // Starred notes float to the top; within each group, newest first.
+            if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
 }
 
 function trashedNotes() {
@@ -84,11 +89,34 @@ function addNote(note) {
     note.createdAt = nowIso();
     note.updatedAt = note.createdAt;
     note.deletedAt = null;
+    note.starred = !!note.starred;
     note.pending = true;
     notes.unshift(note);
     saveNotes(notes);
     scheduleSync();
     return note;
+}
+
+function updateNote(id, patch) {
+    const notes = getNotes();
+    const n = notes.find(x => x.id === id);
+    if (!n) return;
+    Object.assign(n, patch);
+    n.updatedAt = nowIso();
+    n.pending = true;
+    saveNotes(notes);
+    scheduleSync();
+}
+
+function toggleStarred(id) {
+    const notes = getNotes();
+    const n = notes.find(x => x.id === id);
+    if (!n) return;
+    n.starred = !n.starred;
+    n.updatedAt = nowIso();
+    n.pending = true;
+    saveNotes(notes);
+    scheduleSync();
 }
 
 // Move note to trash (soft delete)
@@ -168,13 +196,21 @@ async function sync() {
                 type: n.type,
                 created_at: n.createdAt,
                 updated_at: n.updatedAt,
-                deleted_at: n.deletedAt
+                deleted_at: n.deletedAt,
+                starred: !!n.starred
             };
-            const { data, error } = await sb.from('notes').upsert(payload).select().single();
+            let data, error;
+            ({ data, error } = await sb.from('notes').upsert(payload).select().single());
+            // Graceful degradation if `starred` column doesn't exist yet in DB
+            if (error && /starred/i.test(error.message || '')) {
+                delete payload.starred;
+                ({ data, error } = await sb.from('notes').upsert(payload).select().single());
+            }
             if (error) throw error;
             n.updatedAt = data.updated_at;
             n.createdAt = data.created_at;
             n.deletedAt = data.deleted_at;
+            if (typeof data.starred === 'boolean') n.starred = data.starred;
             n.pending = false;
         }
         saveNotes(Array.from(byId.values()));
@@ -197,6 +233,7 @@ async function sync() {
                 createdAt: r.created_at,
                 updatedAt: r.updated_at,
                 deletedAt: r.deleted_at,
+                starred: !!r.starred,
                 pending: false
             };
             if (!local || new Date(r.updated_at) >= new Date(local.updatedAt)) {
@@ -552,6 +589,11 @@ function renderNotes() {
     notes.forEach(note => {
         const wrapper = document.createElement('div');
         wrapper.className = 'note-card-wrapper';
+        const starClass = note.starred ? 'starred' : '';
+        const starSvg = note.starred
+            ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
+            : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+
         wrapper.innerHTML = `
             <div class="note-card-bg">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -566,13 +608,20 @@ function renderNotes() {
                     <div class="note-card-preview">${escapeHtml(note.content)}</div>
                     <div class="note-card-date">${formatDate(note.createdAt)}</div>
                 </div>
+                <button class="note-card-star ${starClass}" title="${note.starred ? 'Odepnij' : 'Przypnij na górze'}" aria-label="Gwiazdka">
+                    ${starSvg}
+                </button>
             </div>
         `;
         const card = wrapper.querySelector('.note-card');
         card.addEventListener('click', () => {
-            // Swallow click if it was the tail of a horizontal gesture (swipe)
             if (pagerSwipedRecently) { pagerSwipedRecently = false; return; }
             viewNote(note.id);
+        });
+        wrapper.querySelector('.note-card-star').addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleStarred(note.id);
+            renderNotes();
         });
         list.appendChild(wrapper);
     });
@@ -656,6 +705,13 @@ document.getElementById('delete-from-view').addEventListener('click', () => {
     renderTrash();
 });
 
+document.getElementById('edit-from-view').addEventListener('click', () => {
+    if (!currentViewNoteId) return;
+    const note = getNotes().find(n => n.id === currentViewNoteId);
+    if (!note) return;
+    openEditScreen(note);
+});
+
 // =============================================================================
 // New note buttons (text + voice)
 // =============================================================================
@@ -665,7 +721,9 @@ document.getElementById('open-trash-btn').addEventListener('click', () => {
 });
 
 document.getElementById('open-text-btn').addEventListener('click', () => {
+    currentEditNoteId = null;
     document.getElementById('text-note-content').value = '';
+    document.querySelector('#text-note-screen .screen-title').textContent = 'Notatka pisemna';
     showOverlay('text-note-screen');
     document.getElementById('text-note-content').focus();
 });
@@ -676,7 +734,8 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
         alert('Twoja przeglądarka nie wspiera rozpoznawania mowy. Użyj Chrome lub Edge.');
         return;
     }
-    soundMicClick(); // play synchronously within user gesture
+    soundMicClick();
+    currentEditNoteId = null;
 
     document.getElementById('voice-note-content').textContent = '';
     finalTranscript = '';
@@ -685,10 +744,33 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
     document.getElementById('recording-status').classList.remove('active');
     document.getElementById('recorder-circle').classList.remove('recording');
+    document.querySelector('#voice-note-screen .screen-title').textContent = 'Notatka głosowa';
     showOverlay('voice-note-screen');
 
     setTimeout(() => startRecording(), 200);
 });
+
+// Edit button — opens the matching note screen prefilled, without auto-starting mic.
+function openEditScreen(note) {
+    currentEditNoteId = note.id;
+    if (note.type === 'voice') {
+        document.getElementById('voice-note-content').textContent = note.content || '';
+        finalTranscript = note.content || '';
+        recSeconds = 0;
+        document.getElementById('recorder-time').textContent = '00:00';
+        document.getElementById('recording-status').textContent = 'Kliknij aby kontynuować nagrywanie';
+        document.getElementById('recording-status').classList.remove('active');
+        document.getElementById('recorder-circle').classList.remove('recording');
+        document.querySelector('#voice-note-screen .screen-title').textContent = 'Edycja notatki';
+        showOverlay('voice-note-screen');
+        // Do NOT auto-start recording in edit mode
+    } else {
+        document.getElementById('text-note-content').value = note.content || '';
+        document.querySelector('#text-note-screen .screen-title').textContent = 'Edycja notatki';
+        showOverlay('text-note-screen');
+        document.getElementById('text-note-content').focus();
+    }
+}
 
 // =============================================================================
 // Text note save/discard
@@ -697,14 +779,17 @@ document.getElementById('save-text-note').addEventListener('click', () => {
     const content = document.getElementById('text-note-content').value.trim();
     if (!content) { alert('Wpisz treść notatki.'); return; }
     soundSaveClick();
-    addNote({ title: '', content, type: 'text' });
+    if (currentEditNoteId) {
+        updateNote(currentEditNoteId, { content });
+        currentEditNoteId = null;
+    } else {
+        addNote({ title: '', content, type: 'text' });
+    }
     hideAllOverlays();
     renderNotes();
 });
 
-document.getElementById('discard-text').addEventListener('click', () => {
-    hideAllOverlays();
-});
+// discard-text handler defined further below in the edit section
 
 // =============================================================================
 // Voice note
@@ -715,7 +800,8 @@ let finalTranscript = '';
 let recTimer = null;
 let recSeconds = 0;
 let sessionActive = false;
-let sessionFinalized = false;
+let recentCommits = []; // {text, time}[] for content-based dedup
+let wakeLock = null;
 
 document.getElementById('recorder-circle').addEventListener('click', () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -728,43 +814,81 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
     else startRecording();
 });
 
+// Wake Lock: keep screen on during recording
+async function acquireWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch (e) {
+        console.warn('Wake lock unavailable:', e);
+    }
+}
+
+async function releaseWakeLock() {
+    if (wakeLock) {
+        try { await wakeLock.release(); } catch (e) { /* ignore */ }
+        wakeLock = null;
+    }
+}
+
+// If page becomes visible again during recording, re-acquire wake lock
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && isRecording && !wakeLock) {
+        acquireWakeLock();
+    }
+});
+
+// Dedup: reject near-identical final chunks within a short window.
+// Handles Xiaomi/MIUI re-emitting the same final at new result indices.
+function tryCommitFinal(rawChunk) {
+    const trimmed = (rawChunk || '').trim();
+    if (!trimmed) return;
+
+    const now = Date.now();
+    // Same text committed in the last 2.5s → skip
+    if (recentCommits.some(c => c.text === trimmed && now - c.time < 2500)) return;
+    // Tail of finalTranscript already ends with this exact chunk → skip
+    const tail = finalTranscript.trimEnd();
+    if (tail.endsWith(trimmed) && tail.length >= trimmed.length) return;
+
+    finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + trimmed;
+    recentCommits.push({ text: trimmed, time: now });
+    // Keep buffer small — prune anything older than 5 seconds
+    recentCommits = recentCommits.filter(c => now - c.time < 5000);
+}
+
 function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
 
     const r = new SpeechRecognition();
     r.lang = 'pl-PL';
-    r.continuous = false;
+    // continuous=true minimizes session restarts → Android stops playing the
+    // system start/stop beep on every dictation pause. Dedup (tryCommitFinal)
+    // handles any same-text re-emission from buggy engines like MIUI Chrome.
+    r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    r.onstart = () => { sessionActive = true; sessionFinalized = false; };
+    r.onstart = () => { sessionActive = true; };
 
     r.onresult = (event) => {
-        if (!sessionActive || sessionFinalized) return;
+        if (!sessionActive) return;
 
         let interim = '';
-        let finalChunk = '';
-        let hasFinal = false;
-
-        for (let i = 0; i < event.results.length; i++) {
-            const result = event.results[i];
-            const transcript = result[0].transcript;
-            if (result.isFinal) { finalChunk += transcript; hasFinal = true; }
-            else                { interim += transcript; }
-        }
-
-        if (hasFinal) {
-            sessionFinalized = true;
-            const trimmed = finalChunk.trim();
-            if (trimmed) {
-                finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + trimmed;
-            }
+        // Walk from resultIndex (where the new/changed results begin) to end.
+        const startIdx = typeof event.resultIndex === 'number' ? event.resultIndex : 0;
+        for (let i = startIdx; i < event.results.length; i++) {
+            const res = event.results[i];
+            const transcript = res[0].transcript;
+            if (res.isFinal) tryCommitFinal(transcript);
+            else             interim += transcript;
         }
 
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
-            (interim && !hasFinal ? '<span class="interim">' + escapeHtml(interim) + '</span>' : '');
+            (interim ? '<span class="interim">' + escapeHtml(interim) + '</span>' : '');
     };
 
     r.onerror = (event) => {
@@ -775,12 +899,15 @@ function buildRecognition() {
             stopRecording();
             return;
         }
-        stopRecording();
+        // Other errors: let onend handle restart logic
     };
 
     r.onend = () => {
         sessionActive = false;
         if (!isRecording) return;
+        // With continuous=true this fires rarely (after long silence, errors,
+        // or OS-level interruption). Restart with a generous delay to avoid
+        // thrashing.
         setTimeout(() => {
             if (!isRecording) return;
             try {
@@ -790,7 +917,7 @@ function buildRecognition() {
                 console.error('Recognition restart failed:', e);
                 stopRecording();
             }
-        }, 200);
+        }, 400);
     };
 
     return r;
@@ -800,9 +927,10 @@ function startRecording() {
     recognition = buildRecognition();
     if (!recognition) return;
     sessionActive = false;
-    sessionFinalized = false;
+    recentCommits = [];
     recognition.start();
     isRecording = true;
+    acquireWakeLock();
 
     recSeconds = 0;
     updateTimerDisplay();
@@ -822,6 +950,7 @@ function stopRecording() {
         isRecording = false;
     }
     if (recTimer) { clearInterval(recTimer); recTimer = null; }
+    releaseWakeLock();
 
     document.getElementById('recorder-circle').classList.remove('recording');
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
@@ -842,13 +971,24 @@ document.getElementById('save-voice-note').addEventListener('click', () => {
     const content = document.getElementById('voice-note-content').textContent.trim();
     if (!content) { alert('Nagraj treść notatki.'); return; }
     soundSaveClick();
-    addNote({ title: '', content, type: 'voice' });
+    if (currentEditNoteId) {
+        updateNote(currentEditNoteId, { content });
+        currentEditNoteId = null;
+    } else {
+        addNote({ title: '', content, type: 'voice' });
+    }
     hideAllOverlays();
     renderNotes();
 });
 
 document.getElementById('discard-voice').addEventListener('click', () => {
     stopRecording();
+    currentEditNoteId = null;
+    hideAllOverlays();
+});
+
+document.getElementById('discard-text').addEventListener('click', () => {
+    currentEditNoteId = null;
     hideAllOverlays();
 });
 

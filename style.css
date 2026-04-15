@@ -909,6 +909,50 @@ body {
     .install-banner { display: none !important; }
 }
 
+/* ===== Star (pin) button on cards ===== */
+.note-card-star {
+    background: transparent;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: flex-start;
+    margin-left: 4px;
+    flex-shrink: 0;
+    transition: color 0.2s, transform 0.15s;
+    border-radius: 6px;
+}
+
+.note-card-star:hover,
+.note-card-star:focus-visible {
+    color: var(--amber);
+    background: var(--amber-glow);
+    outline: none;
+}
+
+.note-card-star.starred {
+    color: var(--amber);
+}
+
+.note-card-star:active {
+    transform: scale(0.85);
+}
+
+/* ===== Note view: select-all applies only to the content body ===== */
+.note-view {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#view-note-content {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+}
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
     width: 4px;
