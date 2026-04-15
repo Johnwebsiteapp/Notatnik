@@ -8,8 +8,39 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 let currentUser = null;
 let syncInFlight = false;
+let currentViewNoteId = null;
+let realtimeChannel = null;
 
-// ===== Storage (per user) =====
+// =============================================================================
+// Sound (Web Audio API) — short tick for mic + save only, silent elsewhere
+// =============================================================================
+let audioCtx = null;
+
+function playTick(freq = 800, durationMs = 80, gainPeak = 0.12) {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(gainPeak, t + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0005, t + durationMs / 1000);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + durationMs / 1000 + 0.02);
+    } catch (e) { /* ignore */ }
+}
+
+function soundMicClick() { playTick(720, 70); }
+function soundSaveClick() { playTick(980, 110, 0.14); }
+
+// =============================================================================
+// Storage (per user, localStorage-based)
+// =============================================================================
 function notesKey()    { return currentUser ? `notes:${currentUser.id}`    : null; }
 function lastSyncKey() { return currentUser ? `lastSync:${currentUser.id}` : null; }
 
@@ -31,11 +62,16 @@ function visibleNotes() {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
+function trashedNotes() {
+    return getNotes()
+        .filter(n => !!n.deletedAt)
+        .sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+}
+
 function nowIso() { return new Date().toISOString(); }
 
 function uuid() {
     if (crypto.randomUUID) return crypto.randomUUID();
-    // Fallback
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
         const r = Math.random() * 16 | 0;
         return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
@@ -55,7 +91,8 @@ function addNote(note) {
     return note;
 }
 
-function deleteNote(id) {
+// Move note to trash (soft delete)
+function trashNote(id) {
     const notes = getNotes();
     const n = notes.find(x => x.id === id);
     if (!n) return;
@@ -66,7 +103,30 @@ function deleteNote(id) {
     scheduleSync();
 }
 
-// ===== Sync =====
+// Restore from trash
+function restoreNote(id) {
+    const notes = getNotes();
+    const n = notes.find(x => x.id === id);
+    if (!n) return;
+    n.deletedAt = null;
+    n.updatedAt = nowIso();
+    n.pending = true;
+    saveNotes(notes);
+    scheduleSync();
+}
+
+// Hard delete (from localStorage + Supabase)
+async function purgeNote(id) {
+    const notes = getNotes().filter(n => n.id !== id);
+    saveNotes(notes);
+    if (currentUser && navigator.onLine) {
+        try { await sb.from('notes').delete().eq('id', id); } catch (e) { console.error(e); }
+    }
+}
+
+// =============================================================================
+// Sync
+// =============================================================================
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
     if (!ind) return;
@@ -82,7 +142,6 @@ function setSyncStatus(status) {
 }
 
 function scheduleSync() {
-    // Debounce
     clearTimeout(scheduleSync._t);
     scheduleSync._t = setTimeout(sync, 300);
 }
@@ -113,7 +172,6 @@ async function sync() {
             };
             const { data, error } = await sb.from('notes').upsert(payload).select().single();
             if (error) throw error;
-            // Update local with server timestamps
             n.updatedAt = data.updated_at;
             n.createdAt = data.created_at;
             n.deletedAt = data.deleted_at;
@@ -142,7 +200,6 @@ async function sync() {
                 pending: false
             };
             if (!local || new Date(r.updated_at) >= new Date(local.updatedAt)) {
-                // Don't clobber unpushed local changes
                 if (!local || !local.pending) byId.set(r.id, remoteNote);
             }
             if (!pullStamp || r.updated_at > pullStamp) pullStamp = r.updated_at;
@@ -152,8 +209,9 @@ async function sync() {
         if (pullStamp) localStorage.setItem(lastSyncKey(), pullStamp);
 
         setSyncStatus('synced');
-        if (document.getElementById('home-screen').classList.contains('active')) {
+        if (!document.getElementById('pager').classList.contains('hidden')) {
             renderNotes();
+            renderTrash();
         }
     } catch (err) {
         console.error('Sync error:', err);
@@ -167,26 +225,31 @@ window.addEventListener('online',  () => { setSyncStatus('synced'); sync(); });
 window.addEventListener('offline', () => setSyncStatus('offline'));
 window.addEventListener('focus',   () => { if (currentUser) sync(); });
 
-// ===== Auth =====
+// =============================================================================
+// Auth
+// =============================================================================
 async function checkSession() {
     const { data: { session } } = await sb.auth.getSession();
-    if (session) {
-        onLoggedIn(session.user);
-    } else {
-        showScreen('auth-screen');
-    }
+    if (session) onLoggedIn(session.user);
+    else         showAuth();
 }
 
 function onLoggedIn(user) {
     currentUser = user;
     document.getElementById('user-email').textContent = user.email;
     setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
-    showScreen('home-screen');
+    hideAllOverlays();
+    document.getElementById('pager').classList.remove('hidden');
+    // Wait for pager layout pass before positioning the track to page 1,
+    // otherwise the leftmost (trash) panel flashes for one frame.
+    requestAnimationFrame(() => {
+        layoutPager();
+        setPage(1, false);
+    });
     sync();
     subscribeRealtime();
 }
 
-let realtimeChannel = null;
 function subscribeRealtime() {
     if (realtimeChannel) sb.removeChannel(realtimeChannel);
     realtimeChannel = sb.channel(`notes:${currentUser.id}`)
@@ -200,8 +263,10 @@ sb.auth.onAuthStateChange((_event, session) => {
     if (session && !currentUser) onLoggedIn(session.user);
 });
 
-// ===== Auth UI =====
-let authMode = 'login'; // 'login' | 'signup'
+// =============================================================================
+// Auth UI
+// =============================================================================
+let authMode = 'login';
 
 function setAuthMode(mode) {
     authMode = mode;
@@ -264,189 +329,330 @@ document.getElementById('logout-btn').addEventListener('click', async () => {
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
     await sb.auth.signOut();
     currentUser = null;
-    showScreen('auth-screen');
+    hidePager();
+    showAuth();
     document.getElementById('auth-email').value = '';
     document.getElementById('auth-password').value = '';
 });
 
-// ===== Navigation =====
-function showScreen(screenId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(screenId).classList.add('active');
-    if (screenId === 'home-screen') renderNotes();
+// =============================================================================
+// Overlays (auth, note form screens) + Pager visibility
+// =============================================================================
+function showAuth() {
+    hidePager();
+    hideAllOverlays();
+    document.getElementById('auth-screen').classList.add('active');
 }
 
-// ===== Render notes list =====
-function renderNotes() {
-    const list = document.getElementById('notes-list');
-    const notes = visibleNotes();
-    const emptyState = document.getElementById('empty-state');
-    const swipeHint = document.getElementById('swipe-hint');
+function hidePager() {
+    document.getElementById('pager').classList.add('hidden');
+}
 
-    list.querySelectorAll('.note-card-wrapper').forEach(c => c.remove());
+function showOverlay(id) {
+    hideAllOverlays();
+    document.getElementById(id).classList.add('active');
+}
 
-    if (notes.length === 0) {
-        emptyState.style.display = '';
-        swipeHint.classList.add('hidden');
-        return;
+function hideAllOverlays() {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+}
+
+// =============================================================================
+// Pager (swipe between 3 pages)
+// =============================================================================
+let currentPage = 1; // 0 = trash, 1 = home, 2 = profile
+let pagerWidth = 0;
+
+function layoutPager() {
+    const pager = document.getElementById('pager');
+    const track = document.getElementById('pager-track');
+    const pages = track.querySelectorAll('.page');
+    pagerWidth = pager.offsetWidth;
+    pages.forEach(p => p.style.width = pagerWidth + 'px');
+    track.style.width = (pagerWidth * pages.length) + 'px';
+    applyPageTransform(false);
+}
+
+function applyPageTransform(animate) {
+    const track = document.getElementById('pager-track');
+    track.style.transition = animate ? 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none';
+    track.style.transform = `translate3d(${-currentPage * pagerWidth}px, 0, 0)`;
+}
+
+function setPage(idx, animate = true) {
+    currentPage = Math.max(0, Math.min(2, idx));
+    applyPageTransform(animate);
+    document.querySelectorAll('.pager-dot').forEach((d, i) => {
+        d.classList.toggle('active', i === currentPage);
+    });
+    if (currentPage === 0) renderTrash();
+    else if (currentPage === 1) renderNotes();
+}
+
+// Track whether last gesture was a horizontal swipe — used to suppress card clicks
+let pagerSwipedRecently = false;
+
+// Touch swipe
+(function setupPagerSwipe() {
+    const pager = document.getElementById('pager');
+    const track = document.getElementById('pager-track');
+    let startX = 0, startY = 0, dx = 0, dragging = false, axis = null;
+    const EDGE_OVERSHOOT_DAMP = 0.35;
+    const SWIPE_THRESHOLD_FRAC = 0.2; // 20% of screen triggers page change
+
+    // Only the pager dots and form controls block swipe start.
+    // Note cards and empty areas all allow swipe — a horizontal finger drag
+    // across a card scrolls the pager, not opens the card.
+    function isInteractiveTarget(el) {
+        return !!el.closest('input, textarea, [contenteditable="true"], .pager-dot');
     }
 
-    emptyState.style.display = 'none';
-    swipeHint.classList.remove('hidden');
-
-    notes.forEach(note => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'note-card-wrapper';
-
-        const date = new Date(note.createdAt);
-        const dateStr = date.toLocaleDateString('pl-PL', {
-            day: 'numeric', month: 'short', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-
-        const iconSvg = note.type === 'voice'
-            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
-            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-
-        wrapper.innerHTML = `
-            <div class="note-card-bg">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                Usuń
-            </div>
-            <div class="note-card" data-id="${note.id}">
-                <div class="note-card-icon">${iconSvg}</div>
-                <div class="note-card-body">
-                    <div class="note-card-preview">${escapeHtml(note.content)}</div>
-                    <div class="note-card-date">${dateStr}</div>
-                </div>
-                <button class="note-card-delete" title="Usuń">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                </button>
-            </div>
-        `;
-
-        const card = wrapper.querySelector('.note-card');
-
-        wrapper.querySelector('.note-card-delete').addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (confirm('Czy na pewno chcesz usunąć tę notatkę?')) {
-                deleteNote(note.id);
-                renderNotes();
-            }
-        });
-
-        card.addEventListener('click', () => {
-            if (!card.classList.contains('swiped')) viewNote(note.id);
-        });
-
-        setupSwipe(wrapper, card, note.id);
-        list.appendChild(wrapper);
-    });
-}
-
-// ===== Swipe to Delete =====
-function setupSwipe(wrapper, card, noteId) {
-    let startX = 0;
-    let currentX = 0;
-    let isDragging = false;
-    const threshold = 120;
-
-    card.addEventListener('touchstart', (e) => {
+    pager.addEventListener('touchstart', (e) => {
+        pagerSwipedRecently = false;
+        if (isInteractiveTarget(e.target)) { dragging = false; return; }
         startX = e.touches[0].clientX;
-        currentX = 0;
-        isDragging = true;
-        card.classList.add('swiping');
+        startY = e.touches[0].clientY;
+        dx = 0;
+        dragging = true;
+        axis = null;
+        track.style.transition = 'none';
     }, { passive: true });
 
-    card.addEventListener('touchmove', (e) => {
-        if (!isDragging) return;
-        currentX = e.touches[0].clientX - startX;
-        if (currentX < 0) currentX = 0;
-        card.style.transform = `translateX(${currentX}px)`;
+    pager.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+        const cx = e.touches[0].clientX;
+        const cy = e.touches[0].clientY;
+        const ddx = cx - startX;
+        const ddy = cy - startY;
+
+        if (!axis) {
+            if (Math.abs(ddx) > 8 || Math.abs(ddy) > 8) {
+                axis = Math.abs(ddx) > Math.abs(ddy) ? 'x' : 'y';
+            }
+        }
+        if (axis !== 'x') return;
+
+        dx = ddx;
+        if (Math.abs(dx) > 10) pagerSwipedRecently = true;
+        // Dampen overshoot at edges
+        if ((currentPage === 0 && dx > 0) || (currentPage === 2 && dx < 0)) {
+            dx = dx * EDGE_OVERSHOOT_DAMP;
+        }
+        const totalPx = -currentPage * pagerWidth + dx;
+        track.style.transform = `translate3d(${totalPx}px, 0, 0)`;
     }, { passive: true });
 
-    card.addEventListener('touchend', () => {
-        isDragging = false;
-        card.classList.remove('swiping');
+    pager.addEventListener('touchend', () => {
+        if (!dragging) return;
+        dragging = false;
+        if (axis !== 'x') { applyPageTransform(true); return; }
 
-        if (currentX > threshold) {
-            card.style.transition = 'transform 0.3s ease';
-            card.style.transform = `translateX(${window.innerWidth}px)`;
-            setTimeout(() => { deleteNote(noteId); renderNotes(); }, 300);
-        } else {
-            card.style.transition = 'transform 0.2s ease';
-            card.style.transform = 'translateX(0)';
+        const threshold = pagerWidth * SWIPE_THRESHOLD_FRAC;
+        let next = currentPage;
+        if (dx > threshold)      next = currentPage - 1;
+        else if (dx < -threshold) next = currentPage + 1;
+        setPage(next, true);
+    });
+
+    // Mouse drag for desktop (optional nice-to-have)
+    let mDragging = false;
+    pager.addEventListener('mousedown', (e) => {
+        if (isInteractiveTarget(e.target)) return;
+        startX = e.clientX; startY = e.clientY;
+        dx = 0; axis = null; mDragging = true;
+        track.style.transition = 'none';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!mDragging) return;
+        const ddx = e.clientX - startX;
+        const ddy = e.clientY - startY;
+        if (!axis) {
+            if (Math.abs(ddx) > 8 || Math.abs(ddy) > 8) {
+                axis = Math.abs(ddx) > Math.abs(ddy) ? 'x' : 'y';
+            }
         }
-        setTimeout(() => { card.style.transition = ''; }, 300);
-    });
-
-    card.addEventListener('mousedown', (e) => {
-        startX = e.clientX;
-        currentX = 0;
-        isDragging = true;
-        card.classList.add('swiping');
-        e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        currentX = e.clientX - startX;
-        if (currentX < 0) currentX = 0;
-        card.style.transform = `translateX(${currentX}px)`;
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (!isDragging) return;
-        isDragging = false;
-        card.classList.remove('swiping');
-
-        if (currentX > threshold) {
-            card.style.transition = 'transform 0.3s ease';
-            card.style.transform = `translateX(${window.innerWidth}px)`;
-            setTimeout(() => { deleteNote(noteId); renderNotes(); }, 300);
-        } else {
-            card.style.transition = 'transform 0.2s ease';
-            card.style.transform = 'translateX(0)';
+        if (axis !== 'x') return;
+        dx = ddx;
+        if (Math.abs(dx) > 10) pagerSwipedRecently = true;
+        if ((currentPage === 0 && dx > 0) || (currentPage === 2 && dx < 0)) {
+            dx = dx * EDGE_OVERSHOOT_DAMP;
         }
-        setTimeout(() => { card.style.transition = ''; }, 300);
+        const totalPx = -currentPage * pagerWidth + dx;
+        track.style.transform = `translate3d(${totalPx}px, 0, 0)`;
     });
-}
-
-let currentViewNoteId = null;
-
-function viewNote(id) {
-    const note = getNotes().find(n => n.id === id);
-    if (!note) return;
-
-    currentViewNoteId = id;
-    document.getElementById('view-note-type').textContent = note.type === 'voice' ? 'Notatka głosowa' : 'Notatka pisemna';
-    document.getElementById('view-note-content').textContent = note.content;
-
-    const date = new Date(note.createdAt);
-    document.getElementById('view-note-date').textContent = date.toLocaleDateString('pl-PL', {
-        day: 'numeric', month: 'long', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
+    window.addEventListener('mouseup', () => {
+        if (!mDragging) return;
+        mDragging = false;
+        if (axis !== 'x') { applyPageTransform(true); return; }
+        const threshold = pagerWidth * SWIPE_THRESHOLD_FRAC;
+        let next = currentPage;
+        if (dx > threshold)      next = currentPage - 1;
+        else if (dx < -threshold) next = currentPage + 1;
+        setPage(next, true);
     });
+})();
 
-    showScreen('view-note-screen');
-}
+// Dots tap to jump
+document.querySelectorAll('.pager-dot').forEach(d => {
+    d.addEventListener('click', () => setPage(parseInt(d.dataset.page, 10), true));
+});
 
+// Resize
+window.addEventListener('resize', layoutPager);
+
+// =============================================================================
+// Rendering: note cards + trash cards
+// =============================================================================
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// ===== Top Bar Buttons =====
+function noteIconSvg(type) {
+    return type === 'voice'
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+}
+
+function formatDate(iso) {
+    return new Date(iso).toLocaleDateString('pl-PL', {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function renderNotes() {
+    const list = document.getElementById('notes-list');
+    const notes = visibleNotes();
+    const emptyState = document.getElementById('empty-state');
+
+    list.querySelectorAll('.note-card-wrapper').forEach(c => c.remove());
+
+    if (notes.length === 0) { emptyState.style.display = ''; return; }
+    emptyState.style.display = 'none';
+
+    notes.forEach(note => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'note-card-wrapper';
+        wrapper.innerHTML = `
+            <div class="note-card" data-id="${note.id}">
+                <div class="note-card-icon">${noteIconSvg(note.type)}</div>
+                <div class="note-card-body">
+                    <div class="note-card-preview">${escapeHtml(note.content)}</div>
+                    <div class="note-card-date">${formatDate(note.createdAt)}</div>
+                </div>
+                <div class="note-card-actions">
+                    <button class="note-card-action-btn purge" title="Usuń" aria-label="Usuń">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const card = wrapper.querySelector('.note-card');
+        wrapper.querySelector('.note-card-action-btn.purge').addEventListener('click', (e) => {
+            e.stopPropagation();
+            trashNote(note.id);
+            renderNotes();
+            renderTrash();
+        });
+        card.addEventListener('click', (e) => {
+            // Swallow the click if it was tail of a horizontal pager swipe
+            if (pagerSwipedRecently) { pagerSwipedRecently = false; return; }
+            viewNote(note.id);
+        });
+        list.appendChild(wrapper);
+    });
+}
+
+function renderTrash() {
+    const list = document.getElementById('trash-list');
+    const notes = trashedNotes();
+    const emptyState = document.getElementById('trash-empty');
+
+    list.querySelectorAll('.note-card-wrapper').forEach(c => c.remove());
+
+    if (notes.length === 0) { emptyState.style.display = ''; return; }
+    emptyState.style.display = 'none';
+
+    notes.forEach(note => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'note-card-wrapper';
+        wrapper.innerHTML = `
+            <div class="note-card" data-id="${note.id}">
+                <div class="note-card-icon">${noteIconSvg(note.type)}</div>
+                <div class="note-card-body">
+                    <div class="note-card-preview">${escapeHtml(note.content)}</div>
+                    <div class="note-card-date">Usunięto ${formatDate(note.deletedAt)}</div>
+                </div>
+                <div class="note-card-actions">
+                    <button class="note-card-action-btn restore" title="Przywróć" aria-label="Przywróć">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="1 4 1 10 7 10"></polyline>
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                        </svg>
+                    </button>
+                    <button class="note-card-action-btn purge" title="Usuń na zawsze" aria-label="Usuń na zawsze">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        wrapper.querySelector('.note-card-action-btn.restore').addEventListener('click', (e) => {
+            e.stopPropagation();
+            restoreNote(note.id);
+            renderNotes();
+            renderTrash();
+        });
+        wrapper.querySelector('.note-card-action-btn.purge').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!confirm('Usunąć na zawsze? Tej operacji nie można cofnąć.')) return;
+            await purgeNote(note.id);
+            renderTrash();
+        });
+        list.appendChild(wrapper);
+    });
+}
+
+// =============================================================================
+// View note
+// =============================================================================
+function viewNote(id) {
+    const note = getNotes().find(n => n.id === id);
+    if (!note) return;
+    currentViewNoteId = id;
+    document.getElementById('view-note-type').textContent = note.type === 'voice' ? 'Notatka głosowa' : 'Notatka pisemna';
+    document.getElementById('view-note-content').textContent = note.content;
+    document.getElementById('view-note-date').textContent = new Date(note.createdAt).toLocaleDateString('pl-PL', {
+        day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    showOverlay('view-note-screen');
+}
+
+document.getElementById('delete-from-view').addEventListener('click', () => {
+    if (!currentViewNoteId) return;
+    if (!confirm('Przenieść notatkę do kosza?')) return;
+    trashNote(currentViewNoteId);
+    currentViewNoteId = null;
+    hideAllOverlays();
+    renderNotes();
+    renderTrash();
+});
+
+// =============================================================================
+// New note buttons (text + voice)
+// =============================================================================
 document.getElementById('open-text-btn').addEventListener('click', () => {
     document.getElementById('text-note-content').value = '';
-    showScreen('text-note-screen');
+    showOverlay('text-note-screen');
     document.getElementById('text-note-content').focus();
 });
 
@@ -456,6 +662,7 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
         alert('Twoja przeglądarka nie wspiera rozpoznawania mowy. Użyj Chrome lub Edge.');
         return;
     }
+    soundMicClick(); // play synchronously within user gesture
 
     document.getElementById('voice-note-content').textContent = '';
     finalTranscript = '';
@@ -464,38 +671,35 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
     document.getElementById('recording-status').classList.remove('active');
     document.getElementById('recorder-circle').classList.remove('recording');
-    showScreen('voice-note-screen');
+    showOverlay('voice-note-screen');
 
     setTimeout(() => startRecording(), 200);
 });
 
-document.getElementById('trash-mode-btn').addEventListener('click', () => {
-    const hint = document.getElementById('swipe-hint');
-    hint.classList.toggle('hidden');
-    document.getElementById('trash-mode-btn').classList.toggle('active-trash');
-});
-
-// ===== Text Note Save/Discard =====
+// =============================================================================
+// Text note save/discard
+// =============================================================================
 document.getElementById('save-text-note').addEventListener('click', () => {
     const content = document.getElementById('text-note-content').value.trim();
-
     if (!content) { alert('Wpisz treść notatki.'); return; }
-
+    soundSaveClick();
     addNote({ title: '', content, type: 'text' });
-    showScreen('home-screen');
+    hideAllOverlays();
+    renderNotes();
 });
 
 document.getElementById('discard-text').addEventListener('click', () => {
-    showScreen('home-screen');
+    hideAllOverlays();
 });
 
-// ===== Voice Note =====
+// =============================================================================
+// Voice note
+// =============================================================================
 let recognition = null;
 let isRecording = false;
 let finalTranscript = '';
 let recTimer = null;
 let recSeconds = 0;
-// Per-session guards against Android Chrome (Xiaomi/MIUI) re-emitting finals.
 let sessionActive = false;
 let sessionFinalized = false;
 
@@ -505,32 +709,24 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
         alert('Twoja przeglądarka nie wspiera rozpoznawania mowy. Użyj Chrome lub Edge.');
         return;
     }
+    soundMicClick();
     if (isRecording) stopRecording();
     else startRecording();
 });
 
-// Build a fresh recognition instance with all handlers attached.
-// Fresh instance every session — reusing one on Android Chrome (Xiaomi/MIUI)
-// can leak old results into the next session.
 function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
 
     const r = new SpeechRecognition();
     r.lang = 'pl-PL';
-    // continuous=false avoids Xiaomi/MIUI re-emitting the same final 10-20 times.
-    // We simulate continuous by auto-restarting on onend.
     r.continuous = false;
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    r.onstart = () => {
-        sessionActive = true;
-        sessionFinalized = false;
-    };
+    r.onstart = () => { sessionActive = true; sessionFinalized = false; };
 
     r.onresult = (event) => {
-        // Hard lock: once we've appended a final for this session, ignore further events.
         if (!sessionActive || sessionFinalized) return;
 
         let interim = '';
@@ -540,12 +736,8 @@ function buildRecognition() {
         for (let i = 0; i < event.results.length; i++) {
             const result = event.results[i];
             const transcript = result[0].transcript;
-            if (result.isFinal) {
-                finalChunk += transcript;
-                hasFinal = true;
-            } else {
-                interim += transcript;
-            }
+            if (result.isFinal) { finalChunk += transcript; hasFinal = true; }
+            else                { interim += transcript; }
         }
 
         if (hasFinal) {
@@ -565,7 +757,7 @@ function buildRecognition() {
         console.error('Speech recognition error:', event.error);
         if (event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
-            alert('Brak dostępu do mikrofonu. Zezwól na dostęp w ustawieniach przeglądarki.\n\nUwaga: Rozpoznawanie mowy wymaga serwera HTTP (localhost) — nie działa z file://.');
+            alert('Brak dostępu do mikrofonu. Zezwól na dostęp w ustawieniach przeglądarki.');
             stopRecording();
             return;
         }
@@ -575,8 +767,6 @@ function buildRecognition() {
     r.onend = () => {
         sessionActive = false;
         if (!isRecording) return;
-        // 200ms before restarting with a fresh instance — gives audio pipeline
-        // time to settle, prevents leftover results from leaking into next session.
         setTimeout(() => {
             if (!isRecording) return;
             try {
@@ -595,7 +785,6 @@ function buildRecognition() {
 function startRecording() {
     recognition = buildRecognition();
     if (!recognition) return;
-
     sessionActive = false;
     sessionFinalized = false;
     recognition.start();
@@ -613,8 +802,10 @@ function startRecording() {
 function stopRecording() {
     if (recognition) {
         isRecording = false;
-        recognition.stop();
+        try { recognition.stop(); } catch (e) { /* ignore */ }
         recognition = null;
+    } else {
+        isRecording = false;
     }
     if (recTimer) { clearInterval(recTimer); recTimer = null; }
 
@@ -623,7 +814,7 @@ function stopRecording() {
     document.getElementById('recording-status').classList.remove('active');
 
     const container = document.getElementById('voice-note-content');
-    container.textContent = finalTranscript;
+    if (container) container.textContent = finalTranscript;
 }
 
 function updateTimerDisplay() {
@@ -634,44 +825,37 @@ function updateTimerDisplay() {
 
 document.getElementById('save-voice-note').addEventListener('click', () => {
     stopRecording();
-
     const content = document.getElementById('voice-note-content').textContent.trim();
-
     if (!content) { alert('Nagraj treść notatki.'); return; }
-
+    soundSaveClick();
     addNote({ title: '', content, type: 'voice' });
-    showScreen('home-screen');
+    hideAllOverlays();
+    renderNotes();
 });
 
 document.getElementById('discard-voice').addEventListener('click', () => {
     stopRecording();
-    showScreen('home-screen');
+    hideAllOverlays();
 });
 
-// ===== Delete from view =====
-document.getElementById('delete-from-view').addEventListener('click', () => {
-    if (currentViewNoteId && confirm('Czy na pewno chcesz usunąć tę notatkę?')) {
-        deleteNote(currentViewNoteId);
-        currentViewNoteId = null;
-        showScreen('home-screen');
-    }
-});
-
-// ===== Back buttons =====
+// =============================================================================
+// Back buttons (return to pager)
+// =============================================================================
 document.querySelectorAll('.back-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         stopRecording();
-        showScreen(btn.dataset.screen);
+        hideAllOverlays();
     });
 });
 
-// ===== PWA: Install prompt + Service Worker =====
+// =============================================================================
+// PWA: Install prompt + Service Worker
+// =============================================================================
 let deferredInstallPrompt = null;
 
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
-    // Show banner unless user previously dismissed it
     if (localStorage.getItem('installDismissed') !== '1') {
         document.getElementById('install-banner').classList.remove('hidden');
     }
@@ -684,9 +868,7 @@ document.getElementById('install-accept').addEventListener('click', async () => 
     const { outcome } = await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
     banner.classList.add('hidden');
-    if (outcome === 'dismissed') {
-        localStorage.setItem('installDismissed', '1');
-    }
+    if (outcome === 'dismissed') localStorage.setItem('installDismissed', '1');
 });
 
 document.getElementById('install-dismiss').addEventListener('click', () => {
@@ -707,5 +889,7 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// ===== Init =====
+// =============================================================================
+// Init
+// =============================================================================
 checkSession();

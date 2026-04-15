@@ -39,13 +39,182 @@ body {
     position: relative;
 }
 
-/* ===== Screens ===== */
+/* ===== Screens (overlay) ===== */
 .screen {
     display: none;
+    position: fixed;
+    inset: 0;
+    max-width: 500px;
+    margin: 0 auto;
     padding: 0 16px 40px;
+    background: var(--bg);
+    z-index: 30;
+    overflow-y: auto;
 }
 .screen.active {
     display: block;
+}
+
+/* ===== Pager (3 panele swipe) ===== */
+.pager {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    overflow: hidden;
+    touch-action: pan-y;
+}
+.pager.hidden {
+    display: none;
+}
+
+.pager-track {
+    display: flex;
+    min-height: 100vh;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+}
+
+.page {
+    flex: 0 0 auto;
+    min-height: 100vh;
+    padding: 0 16px 80px;
+    overflow-x: hidden;
+    /* width set by JS to match pager width exactly */
+}
+
+.pager-dots {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 20;
+    padding: 6px 10px;
+    border-radius: 20px;
+    background: rgba(26, 26, 26, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.pager-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    opacity: 0.5;
+    transition: all 0.25s ease;
+    cursor: pointer;
+}
+
+.pager-dot.active {
+    background: var(--amber);
+    opacity: 1;
+    width: 20px;
+    border-radius: 3px;
+}
+
+/* ===== Profile Page ===== */
+.profile-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 20px 0;
+    gap: 12px;
+}
+
+.profile-avatar {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: var(--amber-glow);
+    border: 1.5px solid var(--amber-dim);
+    color: var(--amber);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.profile-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.profile-email {
+    font-size: 17px;
+    color: var(--text);
+    font-weight: 600;
+    word-break: break-all;
+    margin-bottom: 16px;
+}
+
+.profile-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.profile-row .sync-indicator {
+    font-size: 14px;
+}
+
+.profile-logout {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.profile-logout:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: var(--danger-bg);
+}
+
+/* ===== Trash actions on cards ===== */
+.note-card-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.note-card-action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.note-card-action-btn.restore:hover {
+    color: var(--amber);
+    border-color: var(--amber-dim);
+    background: var(--amber-glow);
+}
+
+.note-card-action-btn.purge:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: var(--danger-bg);
 }
 
 /* ===== Top Bar ===== */
