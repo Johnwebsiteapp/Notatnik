@@ -228,10 +228,12 @@
                     </svg>
                 </button>
                 <h2 class="screen-title" id="view-note-type">Notatka</h2>
-                <button id="edit-from-view" class="top-btn" title="Edytuj notatkę">
+                <button id="mic-from-view" class="top-btn accent" title="Dyktuj do tej notatki">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
                     </svg>
                 </button>
                 <button id="delete-from-view" class="top-btn danger" title="Usuń notatkę">
@@ -243,7 +245,9 @@
             </div>
             <div class="note-view">
                 <p id="view-note-date" class="note-date"></p>
-                <div id="view-note-content" class="note-content-display" tabindex="0"></div>
+                <div id="view-note-content" class="note-content-display"
+                     contenteditable="true" spellcheck="true"
+                     data-placeholder="Stuknij i pisz..."></div>
             </div>
         </div>
     </div>

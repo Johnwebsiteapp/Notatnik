@@ -225,6 +225,14 @@ async function sync() {
         let pullStamp = lastSync;
         for (const r of remote) {
             const local = byId.get(r.id);
+            // If the DB row literally doesn't include `starred` (e.g. column not
+            // yet created), preserve whatever local had instead of resetting to
+            // false — otherwise the star would flip off right after the user
+            // toggled it on.
+            const remoteHasStarred = Object.prototype.hasOwnProperty.call(r, 'starred');
+            const resolvedStarred = remoteHasStarred
+                ? !!r.starred
+                : (local ? !!local.starred : false);
             const remoteNote = {
                 id: r.id,
                 title: r.title,
@@ -233,7 +241,7 @@ async function sync() {
                 createdAt: r.created_at,
                 updatedAt: r.updated_at,
                 deletedAt: r.deleted_at,
-                starred: !!r.starred,
+                starred: resolvedStarred,
                 pending: false
             };
             if (!local || new Date(r.updated_at) >= new Date(local.updatedAt)) {
@@ -389,6 +397,10 @@ function showOverlay(id) {
 }
 
 function hideAllOverlays() {
+    // Before removing the view overlay, flush any pending in-place edit.
+    if (document.getElementById('view-note-screen').classList.contains('active')) {
+        flushViewEdit();
+    }
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
 }
 
@@ -576,6 +588,37 @@ function formatDate(iso) {
     });
 }
 
+// FLIP-style reorder animation: snapshot positions → re-render → animate from
+// old position to new via transform. Cards glide to their new slot.
+function animateReorder(listEl, renderFn) {
+    const before = new Map();
+    listEl.querySelectorAll('.note-card-wrapper').forEach(w => {
+        const card = w.querySelector('.note-card');
+        if (!card) return;
+        before.set(card.dataset.id, w.getBoundingClientRect());
+    });
+
+    renderFn();
+
+    listEl.querySelectorAll('.note-card-wrapper').forEach(w => {
+        const card = w.querySelector('.note-card');
+        if (!card) return;
+        const id = card.dataset.id;
+        const prev = before.get(id);
+        if (!prev) return;
+        const now = w.getBoundingClientRect();
+        const dy = prev.top - now.top;
+        const dx = prev.left - now.left;
+        if (dx === 0 && dy === 0) return;
+        w.style.transition = 'none';
+        w.style.transform = `translate(${dx}px, ${dy}px)`;
+        requestAnimationFrame(() => {
+            w.style.transition = 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)';
+            w.style.transform = '';
+        });
+    });
+}
+
 function renderNotes() {
     const list = document.getElementById('notes-list');
     const notes = visibleNotes();
@@ -621,7 +664,7 @@ function renderNotes() {
         wrapper.querySelector('.note-card-star').addEventListener('click', (e) => {
             e.stopPropagation();
             toggleStarred(note.id);
-            renderNotes();
+            animateReorder(list, renderNotes);
         });
         list.appendChild(wrapper);
     });
@@ -705,11 +748,52 @@ document.getElementById('delete-from-view').addEventListener('click', () => {
     renderTrash();
 });
 
-document.getElementById('edit-from-view').addEventListener('click', () => {
+// Mic button inside the view — switches to the voice dictation screen in edit
+// mode so the user can keep dictating more text into the same note.
+document.getElementById('mic-from-view').addEventListener('click', () => {
     if (!currentViewNoteId) return;
+    flushViewEdit();                // save any unsaved typing first
     const note = getNotes().find(n => n.id === currentViewNoteId);
     if (!note) return;
-    openEditScreen(note);
+    soundMicClick();
+    currentEditNoteId = note.id;
+    document.getElementById('voice-note-content').textContent = note.content || '';
+    finalTranscript = note.content || '';
+    recSeconds = 0;
+    document.getElementById('recorder-time').textContent = '00:00';
+    document.getElementById('recording-status').textContent = 'Kliknij aby kontynuować nagrywanie';
+    document.getElementById('recording-status').classList.remove('active');
+    document.getElementById('recorder-circle').classList.remove('recording');
+    document.querySelector('#voice-note-screen .screen-title').textContent = 'Edycja notatki';
+    showOverlay('voice-note-screen');
+});
+
+// In-place edit: typing in #view-note-content auto-saves the note (debounced).
+let viewEditDebounce = null;
+function flushViewEdit() {
+    if (viewEditDebounce) { clearTimeout(viewEditDebounce); viewEditDebounce = null; }
+    if (!currentViewNoteId) return;
+    const el = document.getElementById('view-note-content');
+    if (!el) return;
+    const content = (el.textContent || '').trim();
+    const note = getNotes().find(n => n.id === currentViewNoteId);
+    if (!note) return;
+    if ((note.content || '').trim() === content) return;   // nothing to save
+    updateNote(currentViewNoteId, { content });
+}
+
+document.getElementById('view-note-content').addEventListener('input', () => {
+    if (!currentViewNoteId) return;
+    if (viewEditDebounce) clearTimeout(viewEditDebounce);
+    viewEditDebounce = setTimeout(flushViewEdit, 700);
+});
+
+// Prevent Enter from inserting a <div> on some browsers — keep it plain text-ish
+document.getElementById('view-note-content').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.execCommand('insertLineBreak');
+    }
 });
 
 // =============================================================================
@@ -809,10 +893,37 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
         alert('Twoja przeglądarka nie wspiera rozpoznawania mowy. Użyj Chrome lub Edge.');
         return;
     }
-    soundMicClick();
-    if (isRecording) stopRecording();
-    else startRecording();
+    if (isRecording) {
+        stopRecording();          // silent stop — no tick
+    } else {
+        soundMicClick();          // tick only when starting
+        startRecording();
+    }
 });
+
+// Holding an active MediaStream while recognition runs helps suppress the
+// Android system earcons ("beep") that Chrome plays on recognition start/end.
+let micStream = null;
+async function acquireMicStream() {
+    if (micStream) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+    } catch (e) {
+        console.warn('getUserMedia failed (OS beep may stay):', e);
+    }
+}
+function releaseMicStream() {
+    if (!micStream) return;
+    try { micStream.getTracks().forEach(t => t.stop()); } catch (e) { /* ignore */ }
+    micStream = null;
+}
 
 // Wake Lock: keep screen on during recording
 async function acquireWakeLock() {
@@ -923,7 +1034,12 @@ function buildRecognition() {
     return r;
 }
 
-function startRecording() {
+async function startRecording() {
+    // Acquire MediaStream BEFORE recognition.start so the mic is already
+    // live when the speech engine attaches — this is what suppresses the
+    // Android earcon on modern Chrome.
+    await acquireMicStream();
+
     recognition = buildRecognition();
     if (!recognition) return;
     sessionActive = false;
@@ -936,9 +1052,10 @@ function startRecording() {
     updateTimerDisplay();
     recTimer = setInterval(() => { recSeconds++; updateTimerDisplay(); }, 1000);
 
-    document.getElementById('recorder-circle').classList.add('recording');
-    document.getElementById('recording-status').textContent = 'Nagrywanie...';
-    document.getElementById('recording-status').classList.add('active');
+    const circle = document.getElementById('recorder-circle');
+    const status = document.getElementById('recording-status');
+    if (circle) circle.classList.add('recording');
+    if (status) { status.textContent = 'Nagrywanie...'; status.classList.add('active'); }
 }
 
 function stopRecording() {
@@ -951,10 +1068,15 @@ function stopRecording() {
     }
     if (recTimer) { clearInterval(recTimer); recTimer = null; }
     releaseWakeLock();
+    releaseMicStream();
 
-    document.getElementById('recorder-circle').classList.remove('recording');
-    document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
-    document.getElementById('recording-status').classList.remove('active');
+    const circle = document.getElementById('recorder-circle');
+    const status = document.getElementById('recording-status');
+    if (circle) circle.classList.remove('recording');
+    if (status) {
+        status.textContent = 'Kliknij aby nagrywać';
+        status.classList.remove('active');
+    }
 
     const container = document.getElementById('voice-note-content');
     if (container) container.textContent = finalTranscript;
