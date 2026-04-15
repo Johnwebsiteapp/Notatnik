@@ -500,7 +500,9 @@ let isRecording = false;
 let finalTranscript = '';
 let recTimer = null;
 let recSeconds = 0;
-let seenFinalIndices = new Set(); // fix for Android Chrome duplicating onresult events
+// Per-session guards against Android Chrome (Xiaomi/MIUI) re-emitting finals.
+let sessionActive = false;
+let sessionFinalized = false;
 
 document.getElementById('recorder-circle').addEventListener('click', () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -512,41 +514,59 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
     else startRecording();
 });
 
-function startRecording() {
+// Build a fresh recognition instance with all handlers attached.
+// Fresh instance every session — reusing one on Android Chrome (Xiaomi/MIUI)
+// can leak old results into the next session.
+function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) return null;
 
-    seenFinalIndices.clear();
-    recognition = new SpeechRecognition();
-    recognition.lang = 'pl-PL';
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    const r = new SpeechRecognition();
+    r.lang = 'pl-PL';
+    // continuous=false avoids Xiaomi/MIUI re-emitting the same final 10-20 times.
+    // We simulate continuous by auto-restarting on onend.
+    r.continuous = false;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
 
-    recognition.onresult = (event) => {
+    r.onstart = () => {
+        sessionActive = true;
+        sessionFinalized = false;
+    };
+
+    r.onresult = (event) => {
+        // Hard lock: once we've appended a final for this session, ignore further events.
+        if (!sessionActive || sessionFinalized) return;
+
         let interim = '';
+        let finalChunk = '';
+        let hasFinal = false;
 
-        // Walk ALL results and only commit finals we haven't seen yet in this session.
-        // event.resultIndex is unreliable on Android Chrome (Xiaomi/MIUI) — it may stay
-        // at 0 and re-emit the same final result causing 10-20x duplication.
         for (let i = 0; i < event.results.length; i++) {
             const result = event.results[i];
             const transcript = result[0].transcript;
             if (result.isFinal) {
-                if (!seenFinalIndices.has(i)) {
-                    finalTranscript += transcript;
-                    seenFinalIndices.add(i);
-                }
+                finalChunk += transcript;
+                hasFinal = true;
             } else {
                 interim += transcript;
             }
         }
 
+        if (hasFinal) {
+            sessionFinalized = true;
+            const trimmed = finalChunk.trim();
+            if (trimmed) {
+                finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + trimmed;
+            }
+        }
+
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
-            (interim ? '<span class="interim">' + escapeHtml(interim) + '</span>' : '');
+            (interim && !hasFinal ? '<span class="interim">' + escapeHtml(interim) + '</span>' : '');
     };
 
-    recognition.onerror = (event) => {
+    r.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         if (event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
@@ -557,20 +577,32 @@ function startRecording() {
         stopRecording();
     };
 
-    recognition.onend = () => {
-        // New session — results list resets, so our seen-set must reset too.
-        seenFinalIndices.clear();
-        if (isRecording) {
-            // Small delay so the browser fully tears down the old session before we
-            // start a new one (avoids race that also contributes to duplicates).
-            setTimeout(() => {
-                if (isRecording) {
-                    try { recognition.start(); } catch (e) { stopRecording(); }
-                }
-            }, 120);
-        }
+    r.onend = () => {
+        sessionActive = false;
+        if (!isRecording) return;
+        // 200ms before restarting with a fresh instance — gives audio pipeline
+        // time to settle, prevents leftover results from leaking into next session.
+        setTimeout(() => {
+            if (!isRecording) return;
+            try {
+                recognition = buildRecognition();
+                if (recognition) recognition.start();
+            } catch (e) {
+                console.error('Recognition restart failed:', e);
+                stopRecording();
+            }
+        }, 200);
     };
 
+    return r;
+}
+
+function startRecording() {
+    recognition = buildRecognition();
+    if (!recognition) return;
+
+    sessionActive = false;
+    sessionFinalized = false;
     recognition.start();
     isRecording = true;
 
