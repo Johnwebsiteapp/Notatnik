@@ -853,7 +853,6 @@ document.getElementById('mic-from-view').addEventListener('click', () => {
     currentEditNoteId = note.id;
     document.getElementById('voice-note-content').textContent = note.content || '';
     finalTranscript = note.content || '';
-    preSessionTranscript = finalTranscript;
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby kontynuować nagrywanie';
@@ -918,7 +917,6 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
 
     document.getElementById('voice-note-content').textContent = '';
     finalTranscript = '';
-    preSessionTranscript = '';
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
@@ -1021,8 +1019,6 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Transcript sprzed bieżącej sesji rozpoznawania (gdy użytkownik wznawia po pauzie)
-let preSessionTranscript = '';
 
 function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1034,30 +1030,34 @@ function buildRecognition() {
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    // Capture session ID at creation time — stale onresult events from a
-    // previous session (fired after onend on Xiaomi) will have a different
-    // myId and will be ignored, preventing 1000x duplication on resume.
     const myId = ++activeSessionId;
+    // Track which result indices we've already committed — so even if Xiaomi
+    // re-fires old results at the same or different indices, each index is
+    // processed exactly once and never duplicated.
+    let lastCommittedIndex = -1;
 
     r.onstart = () => { sessionActive = true; };
 
     r.onresult = (event) => {
         if (myId !== activeSessionId) return; // stale event from old session
 
-        // Rebuild transcript from scratch using event.results (no dedup needed —
-        // each phrase appears exactly once in this list).
-        let sessionFinal = '';
         let interim = '';
         for (let i = 0; i < event.results.length; i++) {
             const res = event.results[i];
-            const text = res[0].transcript.trim();
-            if (res.isFinal) sessionFinal += (sessionFinal ? ' ' : '') + text;
-            else             interim += res[0].transcript;
+            if (res.isFinal) {
+                if (i > lastCommittedIndex) {
+                    // Genuinely new final — append it once and remember the index
+                    const text = res[0].transcript.trim();
+                    if (text) {
+                        finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + text;
+                    }
+                    lastCommittedIndex = i;
+                }
+                // i <= lastCommittedIndex → already committed, skip silently
+            } else {
+                interim += res[0].transcript;
+            }
         }
-
-        // Combine with transcript from before this session (after a pause/resume)
-        const sep = (preSessionTranscript && sessionFinal) ? ' ' : '';
-        finalTranscript = preSessionTranscript + sep + sessionFinal;
 
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
@@ -1099,9 +1099,6 @@ function startRecording() {
     recognition = buildRecognition();
     if (!recognition) return;
     sessionActive = false;
-    // Snapshot the transcript accumulated so far — new session results
-    // will be appended on top of this via preSessionTranscript.
-    preSessionTranscript = finalTranscript;
     try {
         recognition.start();
     } catch (e) {
