@@ -615,14 +615,30 @@ let pagerSwipedRecently = false;
             cardEl.classList.remove('swiping');
             if (dx > CARD_DELETE_THRESHOLD) {
                 const noteId = cardEl.dataset.id;
+                const wrapperEl = cardEl.closest('.note-card-wrapper');
+                // Faza 1: dokończ slide w prawo + fade (260ms)
                 cardEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
                 cardEl.style.transform = `translateX(${pagerWidth}px)`;
                 cardEl.style.opacity = '0';
+                // Faza 2: zwiń wrapper (max-height → 0), sąsiedzi podjeżdżają
+                setTimeout(() => {
+                    if (wrapperEl) {
+                        const h = wrapperEl.offsetHeight;
+                        wrapperEl.style.maxHeight = h + 'px';
+                        wrapperEl.style.overflow = 'hidden';
+                        wrapperEl.style.transition = 'max-height 0.25s ease, margin-top 0.25s ease';
+                        requestAnimationFrame(() => {
+                            wrapperEl.style.maxHeight = '0px';
+                            wrapperEl.style.marginTop = '-10px';
+                        });
+                    }
+                }, 260);
+                // Po obu fazach — commit do storage + re-render
                 setTimeout(() => {
                     trashNote(noteId);
                     renderNotes();
                     renderTrash();
-                }, 260);
+                }, 520);
             } else {
                 cardEl.style.transition = 'transform 0.2s ease';
                 cardEl.style.transform = 'translateX(0)';
@@ -679,6 +695,21 @@ function formatDate(iso) {
         day: 'numeric', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit'
     });
+}
+
+// Animuje usunięcie pojedynczej karty (slide/unosi się/shake), a po
+// zakończeniu animacji wywołuje onComplete. Gdy karty nie ma w DOM
+// (np. widok listy zamknięty) — od razu odpala callback.
+function animateCardRemoval(card, animationClass, onComplete) {
+    if (!card) { onComplete(); return; }
+    const wrapper = card.closest('.note-card-wrapper');
+    if (!wrapper) { onComplete(); return; }
+    wrapper.classList.add(animationClass);
+    let done = false;
+    const finish = () => { if (done) return; done = true; onComplete(); };
+    wrapper.addEventListener('animationend', finish, { once: true });
+    // Fallback gdyby przeglądarka nie odpaliła animationend (np. display:none w trakcie)
+    setTimeout(finish, 800);
 }
 
 // FLIP-style reorder animation: snapshot positions → re-render → animate from
@@ -803,15 +834,21 @@ function renderTrash() {
 
         wrapper.querySelector('.note-card-action-btn.restore').addEventListener('click', (e) => {
             e.stopPropagation();
-            restoreNote(note.id);
-            renderNotes();
-            renderTrash();
+            const card = wrapper.querySelector('.note-card');
+            animateCardRemoval(card, 'removing-restore', () => {
+                restoreNote(note.id);
+                renderNotes();
+                renderTrash();
+            });
         });
         wrapper.querySelector('.note-card-action-btn.purge').addEventListener('click', async (e) => {
             e.stopPropagation();
             if (!confirm('Usunąć na zawsze? Tej operacji nie można cofnąć.')) return;
-            await purgeNote(note.id);
-            renderTrash();
+            const card = wrapper.querySelector('.note-card');
+            animateCardRemoval(card, 'removing-purge', async () => {
+                await purgeNote(note.id);
+                renderTrash();
+            });
         });
         list.appendChild(wrapper);
     });
@@ -835,11 +872,18 @@ function viewNote(id) {
 document.getElementById('delete-from-view').addEventListener('click', () => {
     if (!currentViewNoteId) return;
     if (!confirm('Przenieść notatkę do kosza?')) return;
-    trashNote(currentViewNoteId);
+    const id = currentViewNoteId;
     currentViewNoteId = null;
     hideAllOverlays();
-    renderNotes();
-    renderTrash();
+    // Overlay zjeżdża w prawo 300ms — daj mu chwilę, potem animuj kartę
+    setTimeout(() => {
+        const card = document.querySelector(`#notes-list .note-card[data-id="${id}"]`);
+        animateCardRemoval(card, 'removing-trash', () => {
+            trashNote(id);
+            renderNotes();
+            renderTrash();
+        });
+    }, 320);
 });
 
 // Mic button inside the view — switches to the voice dictation screen in edit

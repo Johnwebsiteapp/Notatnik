@@ -1323,6 +1323,53 @@ body {
     cursor: text;
 }
 
+/* ===== Animacje usuwania / przywracania kart ===== */
+/* Wspólne: wrapper zwija się po fazie wizualnej, żeby sąsiednie karty
+   płynnie zajęły jego miejsce. margin-top: -10px neutralizuje flex-gap
+   w .notes-list. */
+
+/* Kosz (soft delete) — karta wyjeżdża w prawo + fade + zwija wysokość */
+.note-card-wrapper.removing-trash {
+    overflow: hidden;
+    pointer-events: none;
+    animation: remove-trash 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes remove-trash {
+    0%   { transform: translateX(0);    opacity: 1; max-height: 500px; }
+    50%  { transform: translateX(120%); opacity: 0; max-height: 500px; }
+    100% { transform: translateX(120%); opacity: 0; max-height: 0; margin-top: -10px; }
+}
+
+/* Przywrócenie z kosza — karta unosi się do góry + fade */
+.note-card-wrapper.removing-restore {
+    overflow: hidden;
+    pointer-events: none;
+    animation: remove-restore 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes remove-restore {
+    0%   { transform: translateY(0)     scale(1);    opacity: 1; max-height: 500px; }
+    50%  { transform: translateY(-40px) scale(0.96); opacity: 0; max-height: 500px; }
+    100% { transform: translateY(-40px) scale(0.96); opacity: 0; max-height: 0; margin-top: -10px; }
+}
+
+/* Usunięcie trwałe — shake + zapadanie + fade */
+.note-card-wrapper.removing-purge {
+    overflow: hidden;
+    pointer-events: none;
+    transform-origin: center;
+    animation: remove-purge 0.6s cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards;
+}
+@keyframes remove-purge {
+    0%   { transform: translateX(0)    rotate(0);      opacity: 1; max-height: 500px; }
+    10%  { transform: translateX(-8px) rotate(-1.5deg); }
+    20%  { transform: translateX(8px)  rotate(1.5deg);  }
+    30%  { transform: translateX(-6px) rotate(-1deg);   }
+    40%  { transform: translateX(6px)  rotate(1deg);    }
+    50%  { transform: translateX(-3px) rotate(-0.5deg); opacity: 1; }
+    70%  { transform: scale(0.3)       rotate(0);       opacity: 0; max-height: 500px; }
+    100% { transform: scale(0.3)       rotate(0);       opacity: 0; max-height: 0; margin-top: -10px; }
+}
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
     width: 4px;
