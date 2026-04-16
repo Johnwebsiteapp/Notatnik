@@ -60,6 +60,186 @@
     --border: #2e3248;
 }
 
+/* Motyw 4 — Storm (ciemny niebieski) */
+[data-theme="storm"] {
+    --bg: #1a2035;
+    --surface: #232b45;
+    --surface-hover: #2c3658;
+    --surface-light: #344068;
+    --amber: #5c9cf5;
+    --amber-dim: #3a78d0;
+    --amber-glow: rgba(92, 156, 245, 0.15);
+    --amber-glow-strong: rgba(92, 156, 245, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #e8f0ff;
+    --text-secondary: #b0bedd;
+    --text-dim: #6e80aa;
+    --border: #2e3a58;
+}
+
+/* Motyw 5 — Forest (ciemna zieleń) */
+[data-theme="forest"] {
+    --bg: #182418;
+    --surface: #1f2e1f;
+    --surface-hover: #273827;
+    --surface-light: #2e4230;
+    --amber: #66bb6a;
+    --amber-dim: #43a047;
+    --amber-glow: rgba(102, 187, 106, 0.15);
+    --amber-glow-strong: rgba(102, 187, 106, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #e8f5e8;
+    --text-secondary: #a8c8a8;
+    --text-dim: #6a906a;
+    --border: #2a3e2a;
+}
+
+/* Motyw 6 — Ocean (głęboki błękit) */
+[data-theme="ocean"] {
+    --bg: #142030;
+    --surface: #1c2d40;
+    --surface-hover: #243850;
+    --surface-light: #2c4260;
+    --amber: #4fc3f7;
+    --amber-dim: #039be5;
+    --amber-glow: rgba(79, 195, 247, 0.15);
+    --amber-glow-strong: rgba(79, 195, 247, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #e0f4ff;
+    --text-secondary: #90c8e8;
+    --text-dim: #5090b0;
+    --border: #244058;
+}
+
+/* Motyw 7 — Violet (fioletowy) */
+[data-theme="violet"] {
+    --bg: #1a1530;
+    --surface: #242040;
+    --surface-hover: #2e2850;
+    --surface-light: #383060;
+    --amber: #b39ddb;
+    --amber-dim: #7e57c2;
+    --amber-glow: rgba(179, 157, 219, 0.15);
+    --amber-glow-strong: rgba(179, 157, 219, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #f0eaff;
+    --text-secondary: #c0aee8;
+    --text-dim: #7a68aa;
+    --border: #342c58;
+}
+
+/* Motyw 8 — Mocha (ciepły brąz) */
+[data-theme="mocha"] {
+    --bg: #201a12;
+    --surface: #2a2218;
+    --surface-hover: #362c20;
+    --surface-light: #403428;
+    --amber: #ffb74d;
+    --amber-dim: #f57c00;
+    --amber-glow: rgba(255, 183, 77, 0.15);
+    --amber-glow-strong: rgba(255, 183, 77, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #fff3e0;
+    --text-secondary: #d4b896;
+    --text-dim: #907050;
+    --border: #3a2e20;
+}
+
+/* Motyw 9 — Charcoal (jaśniejsza szarość) */
+[data-theme="charcoal"] {
+    --bg: #252525;
+    --surface: #303030;
+    --surface-hover: #3a3a3a;
+    --surface-light: #444444;
+    --amber: #f5c842;
+    --amber-dim: #c9a020;
+    --amber-glow: rgba(245, 200, 66, 0.12);
+    --amber-glow-strong: rgba(245, 200, 66, 0.25);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #f5f5f5;
+    --text-secondary: #cccccc;
+    --text-dim: #909090;
+    --border: #444444;
+}
+
+/* Motyw 10 — Ash (jeszcze jaśniejsza szarość) */
+[data-theme="ash"] {
+    --bg: #2e2e2e;
+    --surface: #3a3a3a;
+    --surface-hover: #454545;
+    --surface-light: #505050;
+    --amber: #f5c842;
+    --amber-dim: #c9a020;
+    --amber-glow: rgba(245, 200, 66, 0.12);
+    --amber-glow-strong: rgba(245, 200, 66, 0.25);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #f8f8f8;
+    --text-secondary: #d0d0d0;
+    --text-dim: #999999;
+    --border: #505050;
+}
+
+/* Motyw 11 — Smoke (jasna niebiesko-szarość) */
+[data-theme="smoke"] {
+    --bg: #303338;
+    --surface: #3d4048;
+    --surface-hover: #494d58;
+    --surface-light: #555a68;
+    --amber: #64b5f6;
+    --amber-dim: #1e88e5;
+    --amber-glow: rgba(100, 181, 246, 0.12);
+    --amber-glow-strong: rgba(100, 181, 246, 0.25);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #f0f4ff;
+    --text-secondary: #c0c8e0;
+    --text-dim: #8890b0;
+    --border: #505868;
+}
+
+/* Motyw 12 — Dusk (jaśniejszy fiolet) */
+[data-theme="dusk"] {
+    --bg: #2a2438;
+    --surface: #363048;
+    --surface-hover: #423c58;
+    --surface-light: #4e4868;
+    --amber: #ce93d8;
+    --amber-dim: #ab47bc;
+    --amber-glow: rgba(206, 147, 216, 0.15);
+    --amber-glow-strong: rgba(206, 147, 216, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #f5eeff;
+    --text-secondary: #c8b8e0;
+    --text-dim: #9080b8;
+    --border: #484060;
+}
+
+/* Motyw 13 — Warm Gray (najjaśniejszy, ciepły) */
+[data-theme="warm"] {
+    --bg: #363230;
+    --surface: #423e3c;
+    --surface-hover: #504c48;
+    --surface-light: #5e5a56;
+    --amber: #ffb74d;
+    --amber-dim: #f57c00;
+    --amber-glow: rgba(255, 183, 77, 0.15);
+    --amber-glow-strong: rgba(255, 183, 77, 0.28);
+    --danger: #e05252;
+    --danger-bg: rgba(224, 82, 82, 0.15);
+    --text: #fff8f0;
+    --text-secondary: #d8d0c8;
+    --text-dim: #a09888;
+    --border: #585450;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
@@ -246,39 +426,60 @@ body {
     border-radius: 20px;
 }
 
-.theme-switcher {
-    display: flex;
-    gap: 10px;
-    align-items: center;
+.profile-theme-block {
+    width: 100%;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-top: 8px;
+}
+
+.theme-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
 }
 
 .theme-btn {
     background: none;
     border: none;
-    padding: 4px;
+    padding: 6px 4px;
     cursor: pointer;
-    border-radius: 50%;
+    border-radius: 10px;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    transition: transform 0.15s ease;
+    gap: 5px;
+    transition: background 0.15s ease;
 }
 
 .theme-btn:active {
-    transform: scale(0.88);
+    transform: scale(0.92);
+}
+
+.theme-btn.active {
+    background: var(--amber-glow);
 }
 
 .theme-dot {
     display: block;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: 2px solid transparent;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: box-shadow 0.2s;
 }
 
 .theme-btn.active .theme-dot {
     box-shadow: 0 0 0 3px var(--amber);
+}
+
+.theme-name {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.2;
 }
 
 .profile-action {
