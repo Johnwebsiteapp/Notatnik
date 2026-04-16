@@ -964,6 +964,7 @@ let finalTranscript = '';
 let recTimer = null;
 let recSeconds = 0;
 let sessionActive = false;
+let activeSessionId = 0;   // incremented on each new recognition session
 let wakeLock = null;
 
 document.getElementById('recorder-circle').addEventListener('click', () => {
@@ -1017,14 +1018,18 @@ function buildRecognition() {
     r.interimResults = true;
     r.maxAlternatives = 1;
 
+    // Capture session ID at creation time — stale onresult events from a
+    // previous session (fired after onend on Xiaomi) will have a different
+    // myId and will be ignored, preventing 1000x duplication on resume.
+    const myId = ++activeSessionId;
+
     r.onstart = () => { sessionActive = true; };
 
     r.onresult = (event) => {
-        // Rebuild the full transcript from scratch every time using event.results.
-        // event.results accumulates all results for this session — each phrase
-        // appears exactly once, so iterating 0..length always gives the correct
-        // complete text without any duplication, regardless of resultIndex bugs
-        // on Xiaomi/MIUI Chrome.
+        if (myId !== activeSessionId) return; // stale event from old session
+
+        // Rebuild transcript from scratch using event.results (no dedup needed —
+        // each phrase appears exactly once in this list).
         let sessionFinal = '';
         let interim = '';
         for (let i = 0; i < event.results.length; i++) {
