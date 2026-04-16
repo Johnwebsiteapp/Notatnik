@@ -837,6 +837,7 @@ document.getElementById('mic-from-view').addEventListener('click', () => {
     currentEditNoteId = note.id;
     document.getElementById('voice-note-content').textContent = note.content || '';
     finalTranscript = note.content || '';
+    preSessionTranscript = finalTranscript;
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby kontynuować nagrywanie';
@@ -901,6 +902,7 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
 
     document.getElementById('voice-note-content').textContent = '';
     finalTranscript = '';
+    preSessionTranscript = '';
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
@@ -962,7 +964,6 @@ let finalTranscript = '';
 let recTimer = null;
 let recSeconds = 0;
 let sessionActive = false;
-let recentCommits = []; // {text, time}[] for content-based dedup
 let wakeLock = null;
 
 document.getElementById('recorder-circle').addEventListener('click', () => {
@@ -1003,24 +1004,8 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Dedup: reject near-identical final chunks within a short window.
-// Handles Xiaomi/MIUI re-emitting the same final at new result indices.
-function tryCommitFinal(rawChunk) {
-    const trimmed = (rawChunk || '').trim();
-    if (!trimmed) return;
-
-    const now = Date.now();
-    // Same text committed in the last 2.5s → skip
-    if (recentCommits.some(c => c.text === trimmed && now - c.time < 2500)) return;
-    // Tail of finalTranscript already ends with this exact chunk → skip
-    const tail = finalTranscript.trimEnd();
-    if (tail.endsWith(trimmed) && tail.length >= trimmed.length) return;
-
-    finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + trimmed;
-    recentCommits.push({ text: trimmed, time: now });
-    // Keep buffer small — prune anything older than 5 seconds
-    recentCommits = recentCommits.filter(c => now - c.time < 5000);
-}
+// Transcript sprzed bieżącej sesji rozpoznawania (gdy użytkownik wznawia po pauzie)
+let preSessionTranscript = '';
 
 function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1028,9 +1013,6 @@ function buildRecognition() {
 
     const r = new SpeechRecognition();
     r.lang = 'pl-PL';
-    // continuous=true minimizes session restarts → Android stops playing the
-    // system start/stop beep on every dictation pause. Dedup (tryCommitFinal)
-    // handles any same-text re-emission from buggy engines like MIUI Chrome.
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
@@ -1038,17 +1020,23 @@ function buildRecognition() {
     r.onstart = () => { sessionActive = true; };
 
     r.onresult = (event) => {
-        // No sessionActive guard — onresult can fire before onstart on some
-        // Android builds; dedup (tryCommitFinal) already handles stragglers.
+        // Rebuild the full transcript from scratch every time using event.results.
+        // event.results accumulates all results for this session — each phrase
+        // appears exactly once, so iterating 0..length always gives the correct
+        // complete text without any duplication, regardless of resultIndex bugs
+        // on Xiaomi/MIUI Chrome.
+        let sessionFinal = '';
         let interim = '';
-        // Walk from resultIndex (where the new/changed results begin) to end.
-        const startIdx = typeof event.resultIndex === 'number' ? event.resultIndex : 0;
-        for (let i = startIdx; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
             const res = event.results[i];
-            const transcript = res[0].transcript;
-            if (res.isFinal) tryCommitFinal(transcript);
-            else             interim += transcript;
+            const text = res[0].transcript.trim();
+            if (res.isFinal) sessionFinal += (sessionFinal ? ' ' : '') + text;
+            else             interim += res[0].transcript;
         }
+
+        // Combine with transcript from before this session (after a pause/resume)
+        const sep = (preSessionTranscript && sessionFinal) ? ' ' : '';
+        finalTranscript = preSessionTranscript + sep + sessionFinal;
 
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
@@ -1090,7 +1078,9 @@ function startRecording() {
     recognition = buildRecognition();
     if (!recognition) return;
     sessionActive = false;
-    recentCommits = [];
+    // Snapshot the transcript accumulated so far — new session results
+    // will be appended on top of this via preSessionTranscript.
+    preSessionTranscript = finalTranscript;
     try {
         recognition.start();
     } catch (e) {
