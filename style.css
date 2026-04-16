@@ -1352,17 +1352,16 @@ body {
     100% { transform: translateY(-40px) scale(0.96); opacity: 0; max-height: 0; margin-top: -10px; }
 }
 
-/* Usunięcie trwałe — implozja: skalowanie do zera + fade + zwinięcie */
+/* Usunięcie trwałe — zwykły fade-out + zwinięcie wysokości */
 .note-card-wrapper.removing-purge {
     overflow: hidden;
     pointer-events: none;
-    transform-origin: center center;
-    animation: remove-purge 0.45s cubic-bezier(0.55, 0, 0.1, 1) forwards;
+    animation: remove-purge 0.3s ease forwards;
 }
 @keyframes remove-purge {
-    0%   { transform: scale(1);     opacity: 1; max-height: 500px; filter: blur(0); }
-    60%  { transform: scale(0.2);   opacity: 0; max-height: 500px; filter: blur(4px); }
-    100% { transform: scale(0.2);   opacity: 0; max-height: 0;     filter: blur(4px); margin-top: -10px; }
+    0%   { opacity: 1; max-height: 500px; }
+    60%  { opacity: 0; max-height: 500px; }
+    100% { opacity: 0; max-height: 0; margin-top: -10px; }
 }
 
 /* ===== Scrollbar ===== */
