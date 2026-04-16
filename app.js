@@ -1026,6 +1026,12 @@ document.addEventListener('visibilitychange', () => {
 // Każda sesja dodaje tekst na wierzch tego bufora.
 let sessionStartTranscript = '';
 
+// Czas ostatniej aktywności mowy (interim lub final) — dla auto-restartu
+let lastSpeechTime = 0;
+
+// Ile milisekund ciszy akceptujemy zanim pokażemy stan "paused"
+const SILENCE_GRACE_MS = 5000;
+
 function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
@@ -1042,6 +1048,7 @@ function buildRecognition() {
 
     r.onresult = (event) => {
         if (myId !== activeSessionId) return; // stale event from old session
+        lastSpeechTime = Date.now();
 
         // MIUI/Xiaomi bugi które obsługujemy:
         //  (a) te same finals pod wieloma indeksami (duplikat w event.results)
@@ -1107,9 +1114,26 @@ function buildRecognition() {
     r.onend = () => {
         sessionActive = false;
         if (!isRecording) return;
-        // Don't auto-restart — each recognition.start() triggers an Android
-        // system earcon. Instead, switch to "paused" state so the user can
-        // tap the mic to continue (same behaviour as Gboard).
+
+        // Jeśli użytkownik mówił w ciągu ostatnich 5 sekund — kontynuuj
+        // po cichu nową sesją (jest jedna emisja earcona, ale dyktowanie
+        // nie urywa się na każdej krótkiej przerwie w mowie).
+        const silenceMs = Date.now() - lastSpeechTime;
+        if (silenceMs < SILENCE_GRACE_MS) {
+            // Przed nową sesją: stan sprzed niej = obecny finalTranscript
+            sessionStartTranscript = finalTranscript;
+            try {
+                recognition = buildRecognition();
+                if (recognition) {
+                    recognition.start();
+                    return; // zostajemy w stanie recording
+                }
+            } catch (e) {
+                console.error('Auto-restart failed:', e);
+            }
+        }
+
+        // Dłuższa cisza (≥5s) lub błąd — przejście w stan pauzy
         isRecording = false;
         recognition = null;
         const circle = document.getElementById('recorder-circle');
@@ -1129,6 +1153,9 @@ function startRecording() {
     // dla nowej sesji. Wszystkie wyniki z tej sesji zostaną doklejone
     // do niej, bez ryzyka zdublowania tekstu sprzed pauzy.
     sessionStartTranscript = finalTranscript;
+    // Liczymy ciszę od momentu startu — jeśli użytkownik nic nie powie
+    // i silnik zakończy sesję, trafimy w stan "paused" zamiast loopa.
+    lastSpeechTime = Date.now();
 
     recognition = buildRecognition();
     if (!recognition) return;
