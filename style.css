@@ -677,6 +677,17 @@ body {
     50% { box-shadow: 0 0 0 15px rgba(200, 160, 76, 0); }
 }
 
+.recorder-circle.paused {
+    border-color: var(--amber);
+    color: var(--amber);
+    animation: pulse-paused 2s ease-in-out infinite;
+}
+
+@keyframes pulse-paused {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
 .recorder-time {
     font-size: 28px;
     font-weight: 700;

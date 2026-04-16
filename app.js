@@ -1047,19 +1047,18 @@ function buildRecognition() {
     r.onend = () => {
         sessionActive = false;
         if (!isRecording) return;
-        // With continuous=true this fires rarely (after long silence, errors,
-        // or OS-level interruption). Restart with a generous delay to avoid
-        // thrashing.
-        setTimeout(() => {
-            if (!isRecording) return;
-            try {
-                recognition = buildRecognition();
-                if (recognition) recognition.start();
-            } catch (e) {
-                console.error('Recognition restart failed:', e);
-                stopRecording();
-            }
-        }, 400);
+        // Don't auto-restart — each recognition.start() triggers an Android
+        // system earcon. Instead, switch to "paused" state so the user can
+        // tap the mic to continue (same behaviour as Gboard).
+        isRecording = false;
+        recognition = null;
+        const circle = document.getElementById('recorder-circle');
+        const status = document.getElementById('recording-status');
+        if (circle) circle.classList.remove('recording');
+        if (circle) circle.classList.add('paused');
+        if (status) { status.textContent = 'Dotknij aby kontynuować'; status.classList.remove('active'); }
+        if (recTimer) { clearInterval(recTimer); recTimer = null; }
+        // Keep wake lock — user will likely tap to resume shortly
     };
 
     return r;
@@ -1085,7 +1084,7 @@ function startRecording() {
 
     const circle = document.getElementById('recorder-circle');
     const status = document.getElementById('recording-status');
-    if (circle) circle.classList.add('recording');
+    if (circle) { circle.classList.remove('paused'); circle.classList.add('recording'); }
     if (status) { status.textContent = 'Nagrywanie...'; status.classList.add('active'); }
 }
 
@@ -1102,7 +1101,7 @@ function stopRecording() {
 
     const circle = document.getElementById('recorder-circle');
     const status = document.getElementById('recording-status');
-    if (circle) circle.classList.remove('recording');
+    if (circle) { circle.classList.remove('recording'); circle.classList.remove('paused'); }
     if (status) {
         status.textContent = 'Kliknij aby nagrywać';
         status.classList.remove('active');
