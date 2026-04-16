@@ -1041,19 +1041,20 @@ function buildRecognition() {
     r.onresult = (event) => {
         if (myId !== activeSessionId) return; // stale event from old session
 
+        // Start from event.resultIndex — skip results the browser already
+        // processed in previous onresult calls. lastCommittedIndex is a second
+        // safety net in case Xiaomi resets resultIndex to 0.
         let interim = '';
-        for (let i = 0; i < event.results.length; i++) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
             const res = event.results[i];
             if (res.isFinal) {
                 if (i > lastCommittedIndex) {
-                    // Genuinely new final — append it once and remember the index
                     const text = res[0].transcript.trim();
                     if (text) {
                         finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + text;
                     }
                     lastCommittedIndex = i;
                 }
-                // i <= lastCommittedIndex → already committed, skip silently
             } else {
                 interim += res[0].transcript;
             }
