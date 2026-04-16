@@ -195,10 +195,19 @@ body {
     border-radius: var(--radius-sm);
     font-size: 14px;
     color: var(--text-secondary);
+    margin-top: 8px;
 }
 
 .profile-row .sync-indicator {
     font-size: 14px;
+}
+
+.profile-info-badge {
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--border);
+    padding: 3px 8px;
+    border-radius: 20px;
 }
 
 .profile-action {
@@ -503,6 +512,13 @@ body {
     font-size: 11px;
     color: var(--text-dim);
     margin-top: 8px;
+}
+
+.note-trash-expiry {
+    font-size: 11px;
+    color: var(--amber);
+    margin-top: 2px;
+    opacity: 0.8;
 }
 
 .note-card-delete {

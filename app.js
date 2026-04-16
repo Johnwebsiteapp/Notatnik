@@ -41,10 +41,30 @@ function visibleNotes() {
         });
 }
 
+const TRASH_DAYS = 30;
+
+function daysLeftInTrash(deletedAt) {
+    const ms = TRASH_DAYS * 24 * 60 * 60 * 1000;
+    const left = Math.ceil((new Date(deletedAt).getTime() + ms - Date.now()) / (24 * 60 * 60 * 1000));
+    return Math.max(0, left);
+}
+
 function trashedNotes() {
     return getNotes()
         .filter(n => !!n.deletedAt)
         .sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+}
+
+// Purge notes that have been in trash for more than TRASH_DAYS days
+async function purgeExpiredNotes() {
+    const expired = getNotes().filter(n => n.deletedAt && daysLeftInTrash(n.deletedAt) === 0);
+    for (const n of expired) {
+        await purgeNote(n.id);
+    }
+    if (expired.length > 0) {
+        renderNotes();
+        renderTrash();
+    }
 }
 
 function nowIso() { return new Date().toISOString(); }
@@ -265,6 +285,7 @@ function onLoggedIn(user) {
     });
     sync();
     subscribeRealtime();
+    purgeExpiredNotes();
 }
 
 function subscribeRealtime() {
@@ -745,6 +766,7 @@ function renderTrash() {
                 <div class="note-card-body">
                     <div class="note-card-preview">${escapeHtml(note.content)}</div>
                     <div class="note-card-date">Usunięto ${formatDate(note.deletedAt)}</div>
+                    <div class="note-trash-expiry">${(() => { const d = daysLeftInTrash(note.deletedAt); return d === 0 ? 'Usuwa się dzisiaj' : d === 1 ? 'Zostaje 1 dzień' : `Zostaje ${d} dni`; })()}</div>
                 </div>
                 <div class="note-card-actions">
                     <button class="note-card-action-btn restore" title="Przywróć" aria-label="Przywróć">
