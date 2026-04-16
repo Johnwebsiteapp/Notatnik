@@ -12,32 +12,6 @@ let currentViewNoteId = null;
 let currentEditNoteId = null; // if set, save updates instead of adds
 let realtimeChannel = null;
 
-// =============================================================================
-// Sound (Web Audio API) — short tick for mic + save only, silent elsewhere
-// =============================================================================
-let audioCtx = null;
-
-function playTick(freq = 800, durationMs = 80, gainPeak = 0.12) {
-    try {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        const t = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, t);
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(gainPeak, t + 0.005);
-        gain.gain.exponentialRampToValueAtTime(0.0005, t + durationMs / 1000);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(t);
-        osc.stop(t + durationMs / 1000 + 0.02);
-    } catch (e) { /* ignore */ }
-}
-
-function soundMicClick() { playTick(720, 70); }
-function soundSaveClick() { playTick(980, 110, 0.14); }
 
 // =============================================================================
 // Storage (per user, localStorage-based)
@@ -837,7 +811,7 @@ document.getElementById('mic-from-view').addEventListener('click', () => {
     flushViewEdit();                // save any unsaved typing first
     const note = getNotes().find(n => n.id === currentViewNoteId);
     if (!note) return;
-    soundMicClick();
+
     currentEditNoteId = note.id;
     document.getElementById('voice-note-content').textContent = note.content || '';
     finalTranscript = note.content || '';
@@ -900,7 +874,7 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
         alert('Twoja przeglądarka nie wspiera rozpoznawania mowy. Użyj Chrome lub Edge.');
         return;
     }
-    soundMicClick();
+
     currentEditNoteId = null;
 
     document.getElementById('voice-note-content').textContent = '';
@@ -944,7 +918,7 @@ function openEditScreen(note) {
 document.getElementById('save-text-note').addEventListener('click', () => {
     const content = document.getElementById('text-note-content').value.trim();
     if (!content) { alert('Wpisz treść notatki.'); return; }
-    soundSaveClick();
+
     if (currentEditNoteId) {
         updateNote(currentEditNoteId, { content });
         currentEditNoteId = null;
@@ -976,9 +950,8 @@ document.getElementById('recorder-circle').addEventListener('click', () => {
         return;
     }
     if (isRecording) {
-        stopRecording();          // silent stop — no tick
+        stopRecording();
     } else {
-        soundMicClick();          // tick only when starting
         startRecording();
     }
 });
@@ -1149,7 +1122,7 @@ document.getElementById('save-voice-note').addEventListener('click', () => {
     stopRecording();
     const content = document.getElementById('voice-note-content').textContent.trim();
     if (!content) { alert('Nagraj treść notatki.'); return; }
-    soundSaveClick();
+
     if (currentEditNoteId) {
         updateNote(currentEditNoteId, { content });
         currentEditNoteId = null;
