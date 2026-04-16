@@ -853,6 +853,7 @@ document.getElementById('mic-from-view').addEventListener('click', () => {
     currentEditNoteId = note.id;
     document.getElementById('voice-note-content').textContent = note.content || '';
     finalTranscript = note.content || '';
+    sessionStartTranscript = finalTranscript;
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby kontynuować nagrywanie';
@@ -917,6 +918,7 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
 
     document.getElementById('voice-note-content').textContent = '';
     finalTranscript = '';
+    sessionStartTranscript = '';
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
@@ -1020,6 +1022,10 @@ document.addEventListener('visibilitychange', () => {
 });
 
 
+// Transcript zebrany PRZED rozpoczęciem bieżącej sesji rozpoznawania.
+// Każda sesja dodaje tekst na wierzch tego bufora.
+let sessionStartTranscript = '';
+
 function buildRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
@@ -1031,34 +1037,56 @@ function buildRecognition() {
     r.maxAlternatives = 1;
 
     const myId = ++activeSessionId;
-    // Track which result indices we've already committed — so even if Xiaomi
-    // re-fires old results at the same or different indices, each index is
-    // processed exactly once and never duplicated.
-    let lastCommittedIndex = -1;
 
     r.onstart = () => { sessionActive = true; };
 
     r.onresult = (event) => {
         if (myId !== activeSessionId) return; // stale event from old session
 
-        // Start from event.resultIndex — skip results the browser already
-        // processed in previous onresult calls. lastCommittedIndex is a second
-        // safety net in case Xiaomi resets resultIndex to 0.
+        // MIUI/Xiaomi bugi które obsługujemy:
+        //  (a) te same finals pod wieloma indeksami (duplikat w event.results)
+        //  (b) rozszerzanie final-a: najpierw "idę" jako final, potem "idę do"
+        //      jako osobny final — wygląda jakby silnik refine-ował poprzedni
+        //  (c) resultIndex resetowany do 0 → cała lista event.results re-fire-owana
+        //
+        // Rozwiązanie: zawsze przebudowujemy cały tekst sesji od zera,
+        // łącząc finals w jedną listę z wykrywaniem refine-ów i duplikatów.
+
         let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        const finals = [];
+        for (let i = 0; i < event.results.length; i++) {
             const res = event.results[i];
             if (res.isFinal) {
-                if (i > lastCommittedIndex) {
-                    const text = res[0].transcript.trim();
-                    if (text) {
-                        finalTranscript += (finalTranscript && !finalTranscript.endsWith(' ') ? ' ' : '') + text;
-                    }
-                    lastCommittedIndex = i;
-                }
+                const text = res[0].transcript.trim();
+                if (text) finals.push(text);
             } else {
                 interim += res[0].transcript;
             }
         }
+
+        // Zmerge-uj finals: jeśli nowy final zaczyna się od poprzedniego,
+        // to traktuj jako refine (zastąp). Jeśli jest identyczny — pomiń.
+        const phrases = [];
+        for (const text of finals) {
+            if (phrases.length > 0) {
+                const last = phrases[phrases.length - 1];
+                const lastLow = last.toLowerCase();
+                const textLow = text.toLowerCase();
+                if (textLow === lastLow) continue;                   // czysty duplikat
+                if (textLow.startsWith(lastLow + ' ') || textLow === lastLow) {
+                    phrases[phrases.length - 1] = text;              // refine (rozszerzenie)
+                    continue;
+                }
+                if (lastLow.startsWith(textLow + ' ') || lastLow === textLow) {
+                    continue;                                        // nowy jest zawarty w starym
+                }
+            }
+            phrases.push(text);
+        }
+
+        const sessionText = phrases.join(' ');
+        const sep = (sessionStartTranscript && sessionText && !sessionStartTranscript.endsWith(' ')) ? ' ' : '';
+        finalTranscript = sessionStartTranscript + sep + sessionText;
 
         const container = document.getElementById('voice-note-content');
         container.innerHTML = escapeHtml(finalTranscript) +
@@ -1097,6 +1125,11 @@ function buildRecognition() {
 }
 
 function startRecording() {
+    // Zanim stworzymy recognition — zapamiętaj obecny tekst jako bazę
+    // dla nowej sesji. Wszystkie wyniki z tej sesji zostaną doklejone
+    // do niej, bez ryzyka zdublowania tekstu sprzed pauzy.
+    sessionStartTranscript = finalTranscript;
+
     recognition = buildRecognition();
     if (!recognition) return;
     sessionActive = false;
