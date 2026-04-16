@@ -430,6 +430,22 @@ confirmChangeBtn.addEventListener('click', async () => {
     }
 });
 
+// ===== Motyw (theme switcher) =====
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme === 'default' ? '' : theme);
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === theme);
+    });
+    localStorage.setItem('theme', theme);
+}
+
+document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
+});
+
+// Wczytaj motyw przy starcie
+applyTheme(localStorage.getItem('theme') || 'default');
+
 document.getElementById('logout-btn').addEventListener('click', async () => {
     if (!confirm('Wylogować? Notatki zostaną na serwerze.')) return;
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
