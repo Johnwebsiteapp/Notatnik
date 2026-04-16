@@ -1091,6 +1091,21 @@ function buildRecognition() {
             phrases.push(text);
         }
 
+        // KRYTYCZNE: Xiaomi po wznowieniu sesji czasem emituje ponownie
+        // tekst z POPRZEDNIEJ sesji w event.results. Jeśli pierwsze frazy
+        // nowej sesji są już końcówką sessionStartTranscript — odrzuć je,
+        // inaczej zduplikowały by się 1x lub więcej razy.
+        const startLow = sessionStartTranscript.toLowerCase().trim();
+        while (phrases.length > 0) {
+            const firstLow = phrases[0].toLowerCase();
+            // fraza jest już końcem sessionStart? → pomiń
+            if (startLow.endsWith(firstLow) || startLow.endsWith(' ' + firstLow)) {
+                phrases.shift();
+            } else {
+                break;
+            }
+        }
+
         const sessionText = phrases.join(' ');
         const sep = (sessionStartTranscript && sessionText && !sessionStartTranscript.endsWith(' ')) ? ' ' : '';
         finalTranscript = sessionStartTranscript + sep + sessionText;
