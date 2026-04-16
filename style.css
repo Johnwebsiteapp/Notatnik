@@ -1352,22 +1352,17 @@ body {
     100% { transform: translateY(-40px) scale(0.96); opacity: 0; max-height: 0; margin-top: -10px; }
 }
 
-/* Usunięcie trwałe — shake + zapadanie + fade */
+/* Usunięcie trwałe — implozja: skalowanie do zera + fade + zwinięcie */
 .note-card-wrapper.removing-purge {
     overflow: hidden;
     pointer-events: none;
-    transform-origin: center;
-    animation: remove-purge 0.6s cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards;
+    transform-origin: center center;
+    animation: remove-purge 0.45s cubic-bezier(0.55, 0, 0.1, 1) forwards;
 }
 @keyframes remove-purge {
-    0%   { transform: translateX(0)    rotate(0);      opacity: 1; max-height: 500px; }
-    10%  { transform: translateX(-8px) rotate(-1.5deg); }
-    20%  { transform: translateX(8px)  rotate(1.5deg);  }
-    30%  { transform: translateX(-6px) rotate(-1deg);   }
-    40%  { transform: translateX(6px)  rotate(1deg);    }
-    50%  { transform: translateX(-3px) rotate(-0.5deg); opacity: 1; }
-    70%  { transform: scale(0.3)       rotate(0);       opacity: 0; max-height: 500px; }
-    100% { transform: scale(0.3)       rotate(0);       opacity: 0; max-height: 0; margin-top: -10px; }
+    0%   { transform: scale(1);     opacity: 1; max-height: 500px; filter: blur(0); }
+    60%  { transform: scale(0.2);   opacity: 0; max-height: 500px; filter: blur(4px); }
+    100% { transform: scale(0.2);   opacity: 0; max-height: 0;     filter: blur(4px); margin-top: -10px; }
 }
 
 /* ===== Scrollbar ===== */
