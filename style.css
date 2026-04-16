@@ -41,7 +41,6 @@ body {
 
 /* ===== Screens (overlay) ===== */
 .screen {
-    display: none;
     position: fixed;
     inset: 0;
     max-width: 500px;
@@ -50,9 +49,42 @@ body {
     background: var(--bg);
     z-index: 30;
     overflow-y: auto;
+    transform: translateX(100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0s linear 0.3s;
 }
 .screen.active {
-    display: block;
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    z-index: 31;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0s linear 0s;
+}
+
+/* Gdy jeden overlay zastępuje drugi — stary wyjeżdża w lewo */
+.screen.slide-out-left {
+    transform: translateX(-30%);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                visibility 0s linear 0.3s;
+}
+
+/* Auth screen — fade zamiast slide */
+#auth-screen {
+    transform: none;
+    opacity: 0;
+    transition: opacity 0.3s ease,
+                visibility 0s linear 0.3s;
+}
+#auth-screen.active {
+    transform: none;
+    opacity: 1;
+    transition: opacity 0.3s ease,
+                visibility 0s linear 0s;
 }
 
 /* ===== Pager (3 panele swipe) ===== */

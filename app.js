@@ -392,7 +392,21 @@ function hidePager() {
 }
 
 function showOverlay(id) {
-    hideAllOverlays();
+    // If another overlay is already open, slide it out to the left (push deeper)
+    // so the new screen can slide in from the right cleanly.
+    const current = document.querySelector('.screen.active:not(#auth-screen)');
+    if (current && current.id !== id) {
+        current.classList.add('slide-out-left');
+        current.addEventListener('transitionend', () => {
+            current.classList.remove('active', 'slide-out-left');
+        }, { once: true });
+    } else {
+        hideAllOverlays();
+    }
+    // Flush view edit before leaving view-note-screen
+    if (document.getElementById('view-note-screen').classList.contains('active')) {
+        flushViewEdit();
+    }
     document.getElementById(id).classList.add('active');
 }
 
@@ -401,7 +415,7 @@ function hideAllOverlays() {
     if (document.getElementById('view-note-screen').classList.contains('active')) {
         flushViewEdit();
     }
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active', 'slide-out-left'));
 }
 
 // =============================================================================
