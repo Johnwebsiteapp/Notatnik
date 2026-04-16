@@ -367,6 +367,74 @@ document.getElementById('auth-password').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('auth-submit').click();
 });
 
+// ===== Zmiana hasła =====
+const changePasswordBtn  = document.getElementById('change-password-btn');
+const changePasswordForm = document.getElementById('change-password-form');
+const cancelChangeBtn    = document.getElementById('cancel-change-password');
+const confirmChangeBtn   = document.getElementById('confirm-change-password');
+const newPasswordInput   = document.getElementById('new-password');
+const confirmPasswordInput = document.getElementById('confirm-password');
+const changePasswordError   = document.getElementById('change-password-error');
+const changePasswordSuccess = document.getElementById('change-password-success');
+
+function resetChangePasswordForm() {
+    changePasswordForm.classList.add('hidden');
+    newPasswordInput.value = '';
+    confirmPasswordInput.value = '';
+    changePasswordError.classList.add('hidden');
+    changePasswordError.textContent = '';
+    changePasswordSuccess.classList.add('hidden');
+}
+
+changePasswordBtn.addEventListener('click', () => {
+    const isHidden = changePasswordForm.classList.contains('hidden');
+    if (isHidden) {
+        changePasswordForm.classList.remove('hidden');
+        newPasswordInput.focus();
+    } else {
+        resetChangePasswordForm();
+    }
+});
+
+cancelChangeBtn.addEventListener('click', () => resetChangePasswordForm());
+
+confirmChangeBtn.addEventListener('click', async () => {
+    const newPass     = newPasswordInput.value;
+    const confirmPass = confirmPasswordInput.value;
+
+    changePasswordError.classList.add('hidden');
+    changePasswordSuccess.classList.add('hidden');
+
+    if (newPass.length < 6) {
+        changePasswordError.textContent = 'Hasło musi mieć co najmniej 6 znaków.';
+        changePasswordError.classList.remove('hidden');
+        return;
+    }
+    if (newPass !== confirmPass) {
+        changePasswordError.textContent = 'Hasła nie są identyczne.';
+        changePasswordError.classList.remove('hidden');
+        return;
+    }
+
+    confirmChangeBtn.disabled = true;
+    confirmChangeBtn.textContent = 'Zapisywanie…';
+
+    const { error } = await sb.auth.updateUser({ password: newPass });
+
+    confirmChangeBtn.disabled = false;
+    confirmChangeBtn.textContent = 'Zapisz';
+
+    if (error) {
+        changePasswordError.textContent = error.message || 'Błąd zmiany hasła.';
+        changePasswordError.classList.remove('hidden');
+    } else {
+        changePasswordSuccess.classList.remove('hidden');
+        newPasswordInput.value = '';
+        confirmPasswordInput.value = '';
+        setTimeout(() => resetChangePasswordForm(), 2000);
+    }
+});
+
 document.getElementById('logout-btn').addEventListener('click', async () => {
     if (!confirm('Wylogować? Notatki zostaną na serwerze.')) return;
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }

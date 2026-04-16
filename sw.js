@@ -1,7 +1,7 @@
 // Minimal service worker — required by Chrome for PWA install prompt.
 // Network-first strategy: always try network, fall back to cache if offline.
 
-const CACHE = 'notatnik-v9';
+const CACHE = 'notatnik-v10';
 const ASSETS = [
   '/',
   '/index.html',
