@@ -222,7 +222,25 @@
     --border: #484060;
 }
 
-/* Motyw 13 — Warm Gray (najjaśniejszy, ciepły) */
+/* Motyw 14 — OLED (czysta czerń + biel) */
+[data-theme="oled"] {
+    --bg: #000000;
+    --surface: #0a0a0a;
+    --surface-hover: #141414;
+    --surface-light: #1e1e1e;
+    --amber: #ffffff;
+    --amber-dim: #cccccc;
+    --amber-glow: rgba(255, 255, 255, 0.08);
+    --amber-glow-strong: rgba(255, 255, 255, 0.18);
+    --danger: #ff5252;
+    --danger-bg: rgba(255, 82, 82, 0.15);
+    --text: #ffffff;
+    --text-secondary: #b8b8b8;
+    --text-dim: #707070;
+    --border: #2a2a2a;
+}
+
+/* Motyw 15 — Warm Gray (najjaśniejszy, ciepły) */
 [data-theme="warm"] {
     --bg: #363230;
     --surface: #423e3c;
