@@ -5,6 +5,13 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+/* Współczynnik skali tekstu notatek — kontrolowany suwakiem w profilu.
+   Ustawiany na :root via JS z localStorage. Dotyczy tylko treści notatek,
+   nie skaluje UI chrome. */
+:root {
+    --fs-scale: 1;
+}
+
 :root {
     --bg: #1a1a1a;
     --surface: #242424;
@@ -788,7 +795,7 @@ body {
 }
 
 .note-card-preview {
-    font-size: 13px;
+    font-size: calc(13px * var(--fs-scale));
     color: var(--text-secondary);
     line-height: 1.5;
     display: -webkit-box;
@@ -880,7 +887,7 @@ body {
 }
 
 .note-content-input {
-    font-size: 14px;
+    font-size: calc(14px * var(--fs-scale));
     padding: 16px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -1014,7 +1021,7 @@ body {
 
 /* Voice transcript */
 .voice-transcript {
-    font-size: 14px;
+    font-size: calc(14px * var(--fs-scale));
     padding: 16px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -1065,7 +1072,7 @@ body {
 }
 
 .note-content-display {
-    font-size: 14px;
+    font-size: calc(14px * var(--fs-scale));
     line-height: 1.8;
     white-space: pre-wrap;
     color: var(--text);
@@ -1339,6 +1346,75 @@ body {
     user-select: text;
     -webkit-user-select: text;
     cursor: text;
+}
+
+/* ===== Suwak rozmiaru czcionki (w profilu) ===== */
+.fs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.fs-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.fs-preview-small,
+.fs-preview-large {
+    color: var(--text-secondary);
+    font-weight: 600;
+    user-select: none;
+    flex-shrink: 0;
+}
+.fs-preview-small { font-size: 14px; }
+.fs-preview-large { font-size: 22px; }
+
+.fs-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.fs-slider:hover { background: var(--surface-light); }
+
+.fs-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+    box-shadow: 0 0 0 1px var(--amber-dim);
+    transition: transform 0.15s;
+}
+.fs-slider::-webkit-slider-thumb:active { transform: scale(1.15); }
+
+.fs-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+    box-shadow: 0 0 0 1px var(--amber-dim);
+}
+
+.fs-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 10px;
+    text-align: center;
 }
 
 /* ===== Animacje usuwania / przywracania kart ===== */

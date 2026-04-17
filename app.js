@@ -446,6 +446,25 @@ document.querySelectorAll('.theme-btn').forEach(btn => {
 // Wczytaj motyw przy starcie
 applyTheme(localStorage.getItem('theme') || 'default');
 
+// ===== Rozmiar czcionki (suwak w profilu) =====
+function applyFontScale(scale) {
+    const s = Math.max(0.8, Math.min(1.5, Number(scale) || 1));
+    document.documentElement.style.setProperty('--fs-scale', String(s));
+    const slider = document.getElementById('font-size-slider');
+    const label  = document.getElementById('fs-value');
+    if (slider && Number(slider.value) !== s) slider.value = String(s);
+    if (label) label.textContent = Math.round(s * 100) + '%';
+    localStorage.setItem('fontScale', String(s));
+}
+
+const fontSlider = document.getElementById('font-size-slider');
+if (fontSlider) {
+    fontSlider.addEventListener('input', (e) => applyFontScale(e.target.value));
+}
+
+// Wczytaj zapisany rozmiar
+applyFontScale(localStorage.getItem('fontScale') || '1');
+
 document.getElementById('logout-btn').addEventListener('click', async () => {
     if (!confirm('Wylogować? Notatki zostaną na serwerze.')) return;
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
