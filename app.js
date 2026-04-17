@@ -161,11 +161,40 @@ function setSyncStatus(status) {
         error:   'Błąd synchronizacji — spróbuję ponownie'
     };
     ind.title = titles[status] || '';
+    updateOfflineBanner(status);
+}
+
+// Banner offline — widoczny na liście notatek, pokazuje liczbę zmian
+// czekających na wysłanie. Znika gdy wszystko zsynchronizowane.
+function updateOfflineBanner(status) {
+    const banner = document.getElementById('offline-banner');
+    if (!banner) return;
+    const pendingCount = getNotes().filter(n => n.pending).length;
+    const offline = !navigator.onLine || status === 'offline';
+
+    if (!offline && pendingCount === 0) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    banner.classList.remove('hidden');
+    const msg = banner.querySelector('.offline-banner-text');
+    if (offline && pendingCount > 0) {
+        msg.textContent = `Offline — ${pendingCount} ${pendingCount === 1 ? 'zmiana czeka' : pendingCount < 5 ? 'zmiany czekają' : 'zmian czeka'} na wysyłkę`;
+    } else if (offline) {
+        msg.textContent = 'Offline — notatki zapiszą się lokalnie';
+    } else {
+        msg.textContent = `Synchronizuję ${pendingCount} ${pendingCount === 1 ? 'zmianę' : pendingCount < 5 ? 'zmiany' : 'zmian'}…`;
+    }
+    banner.classList.toggle('offline', offline);
+    banner.classList.toggle('syncing', !offline);
 }
 
 function scheduleSync() {
     clearTimeout(scheduleSync._t);
     scheduleSync._t = setTimeout(sync, 300);
+    // Zaktualizuj banner natychmiast — licznik "pending" mógł się zmienić
+    updateOfflineBanner(navigator.onLine ? 'syncing' : 'offline');
 }
 
 async function sync() {
@@ -260,7 +289,12 @@ async function sync() {
     }
 }
 
-window.addEventListener('online',  () => { setSyncStatus('synced'); sync(); });
+window.addEventListener('online', () => {
+    setSyncStatus('synced');
+    sync();
+    // Po powrocie do sieci reaktywuj realtime (offline go nie otwiera)
+    if (currentUser && !realtimeChannel) subscribeRealtime();
+});
 window.addEventListener('offline', () => setSyncStatus('offline'));
 window.addEventListener('focus',   () => { if (currentUser) sync(); });
 
@@ -290,6 +324,9 @@ function onLoggedIn(user) {
 
 function subscribeRealtime() {
     if (realtimeChannel) sb.removeChannel(realtimeChannel);
+    // Offline — nie otwieraj websocketa, żeby nie spamować błędami.
+    // Po powrocie do sieci subskrypcja odpali się w handlerze 'online'.
+    if (!navigator.onLine) return;
     realtimeChannel = sb.channel(`notes:${currentUser.id}`)
         .on('postgres_changes',
             { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${currentUser.id}` },

@@ -1348,6 +1348,40 @@ body {
     cursor: text;
 }
 
+/* ===== Banner offline / sync ===== */
+.offline-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid;
+    animation: offline-banner-in 0.25s ease;
+}
+.offline-banner.hidden { display: none; }
+
+.offline-banner.offline {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.offline-banner.syncing {
+    background: var(--amber-glow);
+    border-color: var(--amber-dim);
+    color: var(--amber);
+}
+
+.offline-banner svg { flex-shrink: 0; }
+
+@keyframes offline-banner-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ===== Suwak rozmiaru czcionki (w profilu) ===== */
 .fs-header {
     display: flex;
