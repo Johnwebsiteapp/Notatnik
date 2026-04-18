@@ -10,7 +10,7 @@
 //   • POST/PATCH do Supabase — nie dotykamy, niech przeglądarka zwróci błąd
 //     sieciowy; app.js ma własną logikę "pending" + retry po online.
 
-const CACHE = 'notatnik-v29';
+const CACHE = 'notatnik-v30';
 
 const SUPABASE_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 

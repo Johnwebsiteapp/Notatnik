@@ -983,12 +983,57 @@ document.getElementById('view-note-content').addEventListener('input', () => {
     viewEditDebounce = setTimeout(flushViewEdit, 700);
 });
 
-// Prevent Enter from inserting a <div> on some browsers — keep it plain text-ish
+// Enter w widoku notatki: zachowujemy plain-text linebreak + auto-numerowanie list.
 document.getElementById('view-note-content').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+
+    const el = e.currentTarget;
+    const text = el.textContent || '';
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) {
         document.execCommand('insertLineBreak');
+        return;
     }
+
+    // Oblicz offset kursora w textContent
+    const range = sel.getRangeAt(0);
+    const pre = range.cloneRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(range.endContainer, range.endOffset);
+    const pos = pre.toString().length;
+
+    const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+    const lineEndIdx = text.indexOf('\n', pos);
+    const lineEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
+    const line = text.substring(lineStart, lineEnd);
+
+    const numMatch = line.match(/^(\s*)(\d+)\.\s(.*)$/);
+    const bulletMatch = line.match(/^(\s*)([-*•])\s(.*)$/);
+    const match = numMatch || bulletMatch;
+
+    if (!match) {
+        document.execCommand('insertLineBreak');
+        return;
+    }
+
+    const rest = match[3];
+    if (rest.trim() === '') {
+        // Pusty element — wyjdź z listy: usuń prefiks i zrób break
+        for (let i = 0; i < line.length; i++) {
+            document.execCommand('delete');
+        }
+        document.execCommand('insertLineBreak');
+        return;
+    }
+
+    const indent = match[1];
+    const prefix = numMatch
+        ? `${indent}${parseInt(match[2], 10) + 1}. `
+        : `${indent}${match[2]} `;
+
+    document.execCommand('insertLineBreak');
+    document.execCommand('insertText', false, prefix);
 });
 
 // =============================================================================
@@ -1055,6 +1100,59 @@ function openEditScreen(note) {
 // =============================================================================
 // Text note save/discard
 // =============================================================================
+// Auto-numerowanie list: "1. coś" + Enter → nowa linia zaczyna się "2. ".
+// Dla punktorów "- " / "* " kontynuuje ten sam znak. Pusty element listy
+// + Enter → wychodzimy z listy (czyszczenie prefiksu).
+(function setupListAutoContinue() {
+    const ta = document.getElementById('text-note-content');
+    if (!ta) return;
+
+    ta.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+
+        const val = ta.value;
+        const pos = ta.selectionStart;
+        // Tylko gdy brak zaznaczenia — nie nadpisujemy zaznaczonego tekstu
+        if (ta.selectionEnd !== pos) return;
+
+        const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+        const lineEndIdx = val.indexOf('\n', pos);
+        const lineEnd = lineEndIdx === -1 ? val.length : lineEndIdx;
+        const line = val.substring(lineStart, lineEnd);
+
+        // "  3. tekst" — opcjonalne wcięcie, numer, kropka, spacja, treść
+        const numMatch = line.match(/^(\s*)(\d+)\.\s(.*)$/);
+        // "- tekst" / "* tekst" — punktory
+        const bulletMatch = line.match(/^(\s*)([-*•])\s(.*)$/);
+
+        const match = numMatch || bulletMatch;
+        if (!match) return;
+
+        const indent = match[1];
+        const marker = numMatch ? match[2] : match[2];
+        const rest   = match[3];
+
+        // Pusty element listy (np. "3. " bez treści) + Enter → wyjdź z listy
+        if (rest.trim() === '') {
+            e.preventDefault();
+            // Usuń prefiks z bieżącej linii (zostaw samo wcięcie znika też,
+            // żeby kursor trafił na początek linii)
+            ta.setRangeText('', lineStart, lineEnd, 'end');
+            return;
+        }
+
+        // Kontynuacja listy: wstaw "\nN+1. " lub "\n- "
+        e.preventDefault();
+        const prefix = numMatch
+            ? `\n${indent}${parseInt(marker, 10) + 1}. `
+            : `\n${indent}${marker} `;
+        ta.setRangeText(prefix, pos, pos, 'end');
+
+        // Wymuś input event, żeby ewentualne resize/auto-grow zadziałały
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+})();
+
 document.getElementById('save-text-note').addEventListener('click', () => {
     const content = document.getElementById('text-note-content').value.trim();
     if (!content) { alert('Wpisz treść notatki.'); return; }
