@@ -1008,7 +1008,7 @@ document.getElementById('view-note-content').addEventListener('keydown', (e) => 
     const lineEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
     const line = text.substring(lineStart, lineEnd);
 
-    const numMatch = line.match(/^(\s*)(\d+)\.\s(.*)$/);
+    const numMatch = line.match(/^(\s*)(\d+)\.(\s?)(.*)$/);
     const bulletMatch = line.match(/^(\s*)([-*•])\s(.*)$/);
     const match = numMatch || bulletMatch;
 
@@ -1017,7 +1017,7 @@ document.getElementById('view-note-content').addEventListener('keydown', (e) => 
         return;
     }
 
-    const rest = match[3];
+    const rest = numMatch ? match[4] : match[3];
     if (rest.trim() === '') {
         // Pusty element — wyjdź z listy: usuń prefiks i zrób break
         for (let i = 0; i < line.length; i++) {
@@ -1028,8 +1028,9 @@ document.getElementById('view-note-content').addEventListener('keydown', (e) => 
     }
 
     const indent = match[1];
+    const sepSpace = numMatch ? match[3] : ' ';
     const prefix = numMatch
-        ? `${indent}${parseInt(match[2], 10) + 1}. `
+        ? `${indent}${parseInt(match[2], 10) + 1}.${sepSpace}`
         : `${indent}${match[2]} `;
 
     document.execCommand('insertLineBreak');
@@ -1120,31 +1121,31 @@ function openEditScreen(note) {
         const lineEnd = lineEndIdx === -1 ? val.length : lineEndIdx;
         const line = val.substring(lineStart, lineEnd);
 
-        // "  3. tekst" — opcjonalne wcięcie, numer, kropka, spacja, treść
-        const numMatch = line.match(/^(\s*)(\d+)\.\s(.*)$/);
-        // "- tekst" / "* tekst" — punktory
+        // "  3. tekst" lub "3.tekst" — spacja po kropce opcjonalna
+        const numMatch = line.match(/^(\s*)(\d+)\.(\s?)(.*)$/);
+        // "- tekst" / "* tekst" — punktory (tu wymagamy spacji, żeby
+        // nie mylić myślnika w tekście z punktorem)
         const bulletMatch = line.match(/^(\s*)([-*•])\s(.*)$/);
 
         const match = numMatch || bulletMatch;
         if (!match) return;
 
         const indent = match[1];
-        const marker = numMatch ? match[2] : match[2];
-        const rest   = match[3];
+        const marker = match[2];
+        const sepSpace = numMatch ? match[3] : ' '; // spacja po markerze (lub jej brak przy "1.foo")
+        const rest    = numMatch ? match[4] : match[3];
 
-        // Pusty element listy (np. "3. " bez treści) + Enter → wyjdź z listy
+        // Pusty element listy (np. "3. " / "3." bez treści) + Enter → wyjdź z listy
         if (rest.trim() === '') {
             e.preventDefault();
-            // Usuń prefiks z bieżącej linii (zostaw samo wcięcie znika też,
-            // żeby kursor trafił na początek linii)
             ta.setRangeText('', lineStart, lineEnd, 'end');
             return;
         }
 
-        // Kontynuacja listy: wstaw "\nN+1. " lub "\n- "
+        // Kontynuacja listy — zachowaj styl (ze spacją lub bez, jak w oryginale)
         e.preventDefault();
         const prefix = numMatch
-            ? `\n${indent}${parseInt(marker, 10) + 1}. `
+            ? `\n${indent}${parseInt(marker, 10) + 1}.${sepSpace}`
             : `\n${indent}${marker} `;
         ta.setRangeText(prefix, pos, pos, 'end');
 
