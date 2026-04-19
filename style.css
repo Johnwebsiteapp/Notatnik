@@ -691,6 +691,22 @@ body {
     background: var(--danger-bg);
 }
 
+/* Zielony przycisk "akceptuj" — zastępuje back-btn w ekranach edycji */
+.top-btn.accept-btn {
+    border-color: #22c55e;
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.12);
+    transition: all 0.2s, transform 0.1s;
+}
+.top-btn.accept-btn:hover {
+    background: rgba(74, 222, 128, 0.22);
+    border-color: #16a34a;
+    color: #6ee797;
+}
+.top-btn.accept-btn:active {
+    transform: scale(0.92);
+}
+
 .top-btn.danger:hover {
     background: rgba(192, 57, 43, 0.25);
 }

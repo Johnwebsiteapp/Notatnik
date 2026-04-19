@@ -1458,6 +1458,28 @@ document.querySelectorAll('.back-btn').forEach(btn => {
     });
 });
 
+// Zielony przycisk akceptacji w ekranach edycji — zachowanie zależne od ekranu:
+//   • text-note-screen  → zapisz treść (jak kliknięcie "Zapisz")
+//   • voice-note-screen → zatrzymaj mikrofon + zapisz treść
+//   • view-note-screen  → flush inline-edit i wróć do listy
+document.querySelectorAll('.accept-btn[data-action="accept"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const screen = btn.closest('.screen');
+        if (!screen) return;
+        if (screen.id === 'text-note-screen') {
+            document.getElementById('save-text-note').click();
+        } else if (screen.id === 'voice-note-screen') {
+            document.getElementById('save-voice-note').click();
+        } else if (screen.id === 'view-note-screen') {
+            flushViewEdit();
+            currentViewNoteId = null;
+            hideAllOverlays();
+        } else {
+            hideAllOverlays();
+        }
+    });
+});
+
 // =============================================================================
 // PWA: Install prompt + Service Worker
 // =============================================================================
