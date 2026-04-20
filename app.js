@@ -502,24 +502,92 @@ if (fontSlider) {
 // Wczytaj zapisany rozmiar
 applyFontScale(localStorage.getItem('fontScale') || '1');
 
-// ===== Szerokość kart notatek (suwak desktop-only w profilu) =====
-function applyCardWidth(px) {
-    const v = Math.max(260, Math.min(520, Number(px) || 340));
-    document.documentElement.style.setProperty('--card-min-width', v + 'px');
-    const slider = document.getElementById('card-width-slider');
-    const label  = document.getElementById('cw-value');
-    if (slider && Number(slider.value) !== v) slider.value = String(v);
-    if (label) label.textContent = v + ' px';
-    localStorage.setItem('cardWidth', String(v));
+// ===== Per-notatka rozmiar karty (desktop only — drag za krawędź) =====
+// Każda karta zapamiętuje swój rozmiar w localStorage pod kluczem
+// cardSize:<id> = {w, h}. Na desktopie dokładamy uchwyty przy prawej
+// i dolnej krawędzi, które pozwalają przeciągnąć mysz żeby zmienić
+// wymiary — nawet do końca ekranu.
+
+const IS_DESKTOP = window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 768px)').matches;
+
+function cardSizeKey(id) { return 'cardSize:' + id; }
+
+function getCardSize(id) {
+    try { return JSON.parse(localStorage.getItem(cardSizeKey(id))) || null; }
+    catch { return null; }
 }
 
-const cwSlider = document.getElementById('card-width-slider');
-if (cwSlider) {
-    cwSlider.addEventListener('input', (e) => applyCardWidth(e.target.value));
+function setCardSize(id, size) {
+    if (!size || (!size.w && !size.h)) {
+        localStorage.removeItem(cardSizeKey(id));
+    } else {
+        localStorage.setItem(cardSizeKey(id), JSON.stringify(size));
+    }
 }
 
-// Wczytaj zapisaną szerokość
-applyCardWidth(localStorage.getItem('cardWidth') || '340');
+// Przywraca zapisany rozmiar na właśnie zrenderowanej karcie
+function applyStoredCardSize(wrapper, id) {
+    if (!IS_DESKTOP) return;
+    const size = getCardSize(id);
+    if (!size) return;
+    if (size.w) wrapper.style.width  = size.w + 'px';
+    if (size.h) {
+        const card = wrapper.querySelector('.note-card');
+        if (card) card.style.height = size.h + 'px';
+    }
+}
+
+// Dokłada do wrappera uchwyty resize (tylko desktop)
+function attachResizeHandles(wrapper, id) {
+    if (!IS_DESKTOP) return;
+    const card = wrapper.querySelector('.note-card');
+    if (!card) return;
+
+    const hRight  = document.createElement('div');
+    hRight.className = 'resize-handle resize-right';
+    hRight.title = 'Przeciągnij, aby zmienić szerokość';
+    const hBottom = document.createElement('div');
+    hBottom.className = 'resize-handle resize-bottom';
+    hBottom.title = 'Przeciągnij, aby zmienić wysokość';
+    wrapper.appendChild(hRight);
+    wrapper.appendChild(hBottom);
+
+    const startDrag = (axis) => (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startW = wrapper.offsetWidth;
+        const startH = card.offsetHeight;
+        document.body.classList.add('is-resizing-card');
+
+        const onMove = (ev) => {
+            if (axis === 'x' || axis === 'xy') {
+                const newW = Math.max(260, startW + (ev.clientX - startX));
+                wrapper.style.width = newW + 'px';
+            }
+            if (axis === 'y' || axis === 'xy') {
+                const newH = Math.max(90, startH + (ev.clientY - startY));
+                card.style.height = newH + 'px';
+            }
+        };
+        const onUp = () => {
+            document.body.classList.remove('is-resizing-card');
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            // Zapisz finalny rozmiar
+            setCardSize(id, {
+                w: parseInt(wrapper.style.width, 10) || null,
+                h: parseInt(card.style.height, 10) || null,
+            });
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
+
+    hRight.addEventListener('mousedown',  startDrag('x'));
+    hBottom.addEventListener('mousedown', startDrag('y'));
+}
 
 document.getElementById('logout-btn').addEventListener('click', async () => {
     if (!confirm('Wylogować? Notatki zostaną na serwerze.')) return;
@@ -866,6 +934,8 @@ function renderNotes() {
             animateReorder(list, renderNotes);
         });
         list.appendChild(wrapper);
+        applyStoredCardSize(wrapper, note.id);
+        attachResizeHandles(wrapper, note.id);
     });
 }
 
@@ -922,10 +992,14 @@ function renderTrash() {
             const card = wrapper.querySelector('.note-card');
             animateCardRemoval(card, 'removing-purge', async () => {
                 await purgeNote(note.id);
+                // Sprzątnij zapamiętany rozmiar — notatka fizycznie zniknęła
+                setCardSize(note.id, null);
                 renderTrash();
             });
         });
         list.appendChild(wrapper);
+        applyStoredCardSize(wrapper, note.id);
+        attachResizeHandles(wrapper, note.id);
     });
 }
 

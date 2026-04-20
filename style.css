@@ -1556,21 +1556,17 @@ body {
    ========================================================================== */
 @media (hover: hover) and (pointer: fine) and (min-width: 768px) {
 
-    /* Domyślna minimalna szerokość karty w siatce — regulowana suwakiem
-       w profilu (tylko desktop). Zapisywana w localStorage jako
-       --card-min-width ustawiane na :root przez JS. */
-    :root {
-        --card-min-width: 340px;
-    }
-
-    /* Pokaż blok "desktop-only" (suwak szerokości notatek) */
+    /* Pokaż bloki opatrzone klasą .desktop-only */
     .desktop-only {
         display: block !important;
     }
 
-    /* Główny kontener — szeroki, z oddechem po bokach */
+    /* Główny kontener — wykorzystaj niemal całą szerokość ekranu,
+       żeby dało się rozciągnąć pojedynczą notatkę "do końca" monitora */
     #app {
-        max-width: 1180px;
+        max-width: none;
+        width: 100%;
+        padding: 0 24px;
     }
 
     /* Overlay-e (notatka, głos, kosz, podgląd, profil…) */
@@ -1592,16 +1588,25 @@ body {
         font-size: 20px;
     }
 
-    /* Lista notatek + kosza → siatka regulowana przez --card-min-width */
+    /* Lista notatek + kosza → pionowo, wyśrodkowane.
+       Każda karta ma swoją szerokość (ustawianą drag-handle'em),
+       kolejne ustawiają się jedna pod drugą. */
     .notes-list {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 340px), 1fr));
+        display: flex;
+        flex-direction: column;
         gap: 16px;
-        align-items: start;
+        align-items: center;
     }
-    /* Empty-state rozciąga się na całą szerokość siatki */
+
+    /* Domyślna szerokość karty — dopóki użytkownik jej nie rozciągnie */
+    .note-card-wrapper {
+        width: 720px;
+        max-width: 100%;
+    }
+
+    /* Empty-state wyśrodkowane */
     .empty-state {
-        grid-column: 1 / -1;
+        align-self: stretch;
     }
 
     /* Karta: większy padding + limit linii podglądu, żeby komórki
@@ -1686,6 +1691,72 @@ body {
        a nie w tle, na desktopie ekran jest wyższy */
     .pager-dots {
         bottom: 20px;
+    }
+
+    /* ===== Uchwyty do rozciągania kart (desktop only) ===== */
+    .resize-handle {
+        position: absolute;
+        z-index: 5;
+        background: transparent;
+        transition: background 0.15s;
+    }
+    .resize-handle::after {
+        content: '';
+        position: absolute;
+        background: var(--amber);
+        opacity: 0;
+        transition: opacity 0.15s;
+        border-radius: 2px;
+    }
+    /* Uchwyt prawy — pionowy pasek wzdłuż prawej krawędzi (wewnątrz wrappera) */
+    .resize-right {
+        top: 8px;
+        right: 0;
+        width: 8px;
+        height: calc(100% - 16px);
+        cursor: ew-resize;
+    }
+    .resize-right::after {
+        top: 35%;
+        right: 2px;
+        width: 3px;
+        height: 30%;
+    }
+    /* Uchwyt dolny — poziomy pasek wzdłuż dolnej krawędzi */
+    .resize-bottom {
+        bottom: 0;
+        left: 8px;
+        width: calc(100% - 16px);
+        height: 8px;
+        cursor: ns-resize;
+    }
+    .resize-bottom::after {
+        bottom: 2px;
+        left: 35%;
+        height: 3px;
+        width: 30%;
+    }
+    /* Podświetlenie uchwytu przy najechaniu na kartę lub sam uchwyt */
+    .note-card-wrapper:hover .resize-handle::after,
+    .resize-handle:hover::after {
+        opacity: 0.5;
+    }
+    .resize-handle:hover::after {
+        opacity: 1;
+    }
+
+    /* Podczas aktywnego dragu — kursor na całym oknie + nie zaznaczaj
+       tekstu. body.is-resizing-card ustawia to globalnie. */
+    body.is-resizing-card {
+        cursor: ew-resize;
+        user-select: none;
+    }
+    body.is-resizing-card .note-card { pointer-events: none; }
+    body.is-resizing-card .resize-handle { pointer-events: auto; }
+
+    /* Karta: dopuść wysokość narzucaną przez JS (drag) */
+    .note-card {
+        box-sizing: border-box;
     }
 }
 
