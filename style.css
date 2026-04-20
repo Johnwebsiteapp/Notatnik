@@ -1547,3 +1547,128 @@ body {
     background: var(--border);
     border-radius: 4px;
 }
+
+/* ==========================================================================
+   DESKTOP — szerszy layout, siatka kart w kilku kolumnach.
+   Target: urządzenia z myszką/trackpadem (hover + fine pointer) i
+   viewportem ≥ 768 px. Telefony (Xiaomi i inne) mają pointer: coarse,
+   więc TA SEKCJA ICH NIE DOTYCZY — mobile zostaje 1:1 jak było.
+   ========================================================================== */
+@media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+
+    /* Główny kontener — szeroki, z oddechem po bokach */
+    #app {
+        max-width: 1180px;
+    }
+
+    /* Overlay-e (notatka, głos, kosz, podgląd, profil…) */
+    .screen {
+        max-width: 1180px;
+        padding: 0 40px 40px;
+    }
+
+    .page {
+        padding: 0 40px 80px;
+    }
+
+    .top-bar {
+        padding: 24px 0 18px;
+        gap: 14px;
+    }
+
+    .screen-title {
+        font-size: 20px;
+    }
+
+    /* Lista notatek + kosza → siatka 2–4 kolumny zależnie od szerokości */
+    .notes-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 14px;
+        align-items: start;
+    }
+    /* Empty-state rozciąga się na całą szerokość siatki */
+    .empty-state {
+        grid-column: 1 / -1;
+    }
+
+    /* Karta: limit linii podglądu krótszy, żeby komórki miały
+       porównywalną wysokość w siatce */
+    .note-card-preview {
+        -webkit-line-clamp: 6;
+    }
+
+    /* Wyraźniejszy hover — karta lekko się unosi */
+    .note-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+        border-color: var(--amber-dim);
+    }
+
+    /* Przyciski akcji na kartach zawsze widoczne (nie tylko on-hover) */
+    .note-card-actions { opacity: 1; }
+
+    /* Formularze notatek: nie rozciągaj edytora na całe 1180 px,
+       centruj w komfortowej szerokości */
+    .note-form {
+        max-width: 760px;
+        margin: 0 auto;
+        width: 100%;
+    }
+    .note-content-input {
+        min-height: 420px;
+    }
+    .voice-transcript {
+        min-height: 200px;
+    }
+
+    /* Widok notatki — ta sama komfortowa szerokość */
+    .note-view {
+        max-width: 860px;
+        margin: 0 auto;
+    }
+
+    /* Profil — nie rozciągaj na całość, centruj */
+    .profile-container {
+        max-width: 680px;
+        margin: 0 auto;
+    }
+
+    /* Siatka motywów — wykorzystaj miejsce, więcej kolumn */
+    .theme-grid {
+        grid-template-columns: repeat(7, 1fr);
+    }
+
+    /* Offline banner — spójna szerokość z listą */
+    .offline-banner {
+        max-width: 100%;
+    }
+
+    /* Hint o swipe jest mobilny — na desktopie zbędny */
+    .swipe-hint { display: none; }
+
+    /* Przyciski top-bar delikatnie większe na desktopie */
+    .top-btn,
+    .top-btn-wide {
+        height: 56px;
+    }
+    .top-btn {
+        width: 56px;
+    }
+
+    /* Pager-dots w nawigacji home/profil — centruj nad treścią
+       a nie w tle, na desktopie ekran jest wyższy */
+    .pager-dots {
+        bottom: 20px;
+    }
+}
+
+/* Szczególnie szerokie monitory — więcej kolumn w siatce kart */
+@media (hover: hover) and (pointer: fine) and (min-width: 1200px) {
+    .notes-list {
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+    .theme-grid {
+        grid-template-columns: repeat(8, 1fr);
+    }
+}
