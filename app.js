@@ -502,53 +502,38 @@ if (fontSlider) {
 // Wczytaj zapisany rozmiar
 applyFontScale(localStorage.getItem('fontScale') || '1');
 
-// ===== Per-notatka rozmiar karty (desktop only — drag za krawędź) =====
-// Każda karta zapamiętuje swój rozmiar w localStorage pod kluczem
-// cardSize:<id> = {w, h}. Na desktopie dokładamy uchwyty przy prawej
-// i dolnej krawędzi, które pozwalają przeciągnąć mysz żeby zmienić
-// wymiary — nawet do końca ekranu.
+// ===== Globalny rozmiar kart (desktop only — drag za krawędź) =====
+// Przeciąganie jakiegokolwiek uchwytu zmienia rozmiar WSZYSTKICH kart
+// jednocześnie przez zmienne CSS --card-w i --card-h ustawiane na :root.
+// Wartości zapisywane w localStorage (globalnie dla listy).
 
 const IS_DESKTOP = window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 768px)').matches;
 
-function cardSizeKey(id) { return 'cardSize:' + id; }
+const CARD_W_MIN = 280;
+const CARD_H_MIN = 90;
 
-function getCardSize(id) {
-    try { return JSON.parse(localStorage.getItem(cardSizeKey(id))) || null; }
-    catch { return null; }
-}
-
-function setCardSize(id, size) {
-    if (!size || (!size.w && !size.h)) {
-        localStorage.removeItem(cardSizeKey(id));
-    } else {
-        localStorage.setItem(cardSizeKey(id), JSON.stringify(size));
-    }
-}
-
-// Przywraca zapisany rozmiar na właśnie zrenderowanej karcie
-function applyStoredCardSize(wrapper, id) {
+function applyGlobalCardSize() {
     if (!IS_DESKTOP) return;
-    const size = getCardSize(id);
-    if (!size) return;
-    if (size.w) wrapper.style.width  = size.w + 'px';
-    if (size.h) {
-        const card = wrapper.querySelector('.note-card');
-        if (card) card.style.height = size.h + 'px';
-    }
+    const w = localStorage.getItem('cardsWidth');
+    const h = localStorage.getItem('cardsHeight');
+    if (w) document.documentElement.style.setProperty('--card-w', w + 'px');
+    if (h) document.documentElement.style.setProperty('--card-h', h + 'px');
 }
+applyGlobalCardSize();
 
-// Dokłada do wrappera uchwyty resize (tylko desktop)
-function attachResizeHandles(wrapper, id) {
+// Dokłada do wrappera uchwyty resize (tylko desktop).
+// Każdy uchwyt steruje GLOBALNĄ wartością — wszystkie karty rosną/maleją razem.
+function attachResizeHandles(wrapper) {
     if (!IS_DESKTOP) return;
     const card = wrapper.querySelector('.note-card');
     if (!card) return;
 
     const hRight  = document.createElement('div');
     hRight.className = 'resize-handle resize-right';
-    hRight.title = 'Przeciągnij, aby zmienić szerokość';
+    hRight.title = 'Przeciągnij, aby zmienić szerokość wszystkich notatek';
     const hBottom = document.createElement('div');
     hBottom.className = 'resize-handle resize-bottom';
-    hBottom.title = 'Przeciągnij, aby zmienić wysokość';
+    hBottom.title = 'Przeciągnij, aby zmienić wysokość wszystkich notatek';
     wrapper.appendChild(hRight);
     wrapper.appendChild(hBottom);
 
@@ -560,26 +545,30 @@ function attachResizeHandles(wrapper, id) {
         const startW = wrapper.offsetWidth;
         const startH = card.offsetHeight;
         document.body.classList.add('is-resizing-card');
+        document.body.classList.add(axis === 'x' ? 'resizing-x' : 'resizing-y');
 
         const onMove = (ev) => {
-            if (axis === 'x' || axis === 'xy') {
-                const newW = Math.max(260, startW + (ev.clientX - startX));
-                wrapper.style.width = newW + 'px';
-            }
-            if (axis === 'y' || axis === 'xy') {
-                const newH = Math.max(90, startH + (ev.clientY - startY));
-                card.style.height = newH + 'px';
+            if (axis === 'x') {
+                const newW = Math.max(CARD_W_MIN, startW + (ev.clientX - startX));
+                document.documentElement.style.setProperty('--card-w', newW + 'px');
+            } else {
+                const newH = Math.max(CARD_H_MIN, startH + (ev.clientY - startY));
+                document.documentElement.style.setProperty('--card-h', newH + 'px');
             }
         };
         const onUp = () => {
-            document.body.classList.remove('is-resizing-card');
+            document.body.classList.remove('is-resizing-card', 'resizing-x', 'resizing-y');
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
-            // Zapisz finalny rozmiar
-            setCardSize(id, {
-                w: parseInt(wrapper.style.width, 10) || null,
-                h: parseInt(card.style.height, 10) || null,
-            });
+            // Zapisz finalną wartość globalnie
+            const rootStyle = document.documentElement.style;
+            if (axis === 'x') {
+                const v = parseInt(rootStyle.getPropertyValue('--card-w'), 10);
+                if (v) localStorage.setItem('cardsWidth', String(v));
+            } else {
+                const v = parseInt(rootStyle.getPropertyValue('--card-h'), 10);
+                if (v) localStorage.setItem('cardsHeight', String(v));
+            }
         };
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
@@ -671,7 +660,23 @@ function setPage(idx, animate = true) {
         d.classList.toggle('active', i === currentPage);
     });
     if (currentPage === 0) renderNotes();
+    updatePageNavButtons();
 }
+
+// Pokaż/ukryj strzałki nawigacji zależnie od bieżącej strony
+function updatePageNavButtons() {
+    const prev = document.getElementById('page-nav-prev');
+    const next = document.getElementById('page-nav-next');
+    if (prev) prev.classList.toggle('disabled', currentPage <= 0);
+    if (next) next.classList.toggle('disabled', currentPage >= LAST_PAGE);
+}
+
+document.getElementById('page-nav-next')?.addEventListener('click', () => {
+    setPage(currentPage + 1, true);
+});
+document.getElementById('page-nav-prev')?.addEventListener('click', () => {
+    setPage(currentPage - 1, true);
+});
 
 // Track whether last gesture was a horizontal swipe — used to suppress card clicks
 let pagerSwipedRecently = false;
@@ -934,8 +939,7 @@ function renderNotes() {
             animateReorder(list, renderNotes);
         });
         list.appendChild(wrapper);
-        applyStoredCardSize(wrapper, note.id);
-        attachResizeHandles(wrapper, note.id);
+        attachResizeHandles(wrapper);
     });
 }
 
@@ -992,14 +996,11 @@ function renderTrash() {
             const card = wrapper.querySelector('.note-card');
             animateCardRemoval(card, 'removing-purge', async () => {
                 await purgeNote(note.id);
-                // Sprzątnij zapamiętany rozmiar — notatka fizycznie zniknęła
-                setCardSize(note.id, null);
                 renderTrash();
             });
         });
         list.appendChild(wrapper);
-        applyStoredCardSize(wrapper, note.id);
-        attachResizeHandles(wrapper, note.id);
+        attachResizeHandles(wrapper);
     });
 }
 

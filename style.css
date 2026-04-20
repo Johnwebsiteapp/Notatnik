@@ -1598,10 +1598,16 @@ body {
         align-items: center;
     }
 
-    /* Domyślna szerokość karty — dopóki użytkownik jej nie rozciągnie */
+    /* Domyślna szerokość/wysokość kart — sterowana zmiennymi CSS
+       ustawianymi przez JS z localStorage. Przeciągnięcie dowolnego
+       uchwytu aktualizuje zmienną → WSZYSTKIE karty się zmieniają. */
     .note-card-wrapper {
-        width: 720px;
+        width: var(--card-w, 720px);
         max-width: 100%;
+    }
+    .note-card {
+        height: var(--card-h, auto);
+        min-height: 90px;
     }
 
     /* Empty-state wyśrodkowane */
@@ -1693,6 +1699,44 @@ body {
         bottom: 20px;
     }
 
+    /* ===== Strzałki nawigacji między stronami (desktop only) ===== */
+    .page-nav-btn {
+        position: fixed;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 1.5px solid var(--border);
+        background: var(--surface);
+        color: var(--text-secondary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 25;
+        transition: all 0.2s, transform 0.2s;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .page-nav-btn:hover {
+        background: var(--amber-glow);
+        border-color: var(--amber-dim);
+        color: var(--amber);
+        transform: translateY(-50%) scale(1.08);
+    }
+    .page-nav-btn:active {
+        transform: translateY(-50%) scale(0.94);
+    }
+    #page-nav-next { right: 20px; }
+    #page-nav-prev { left: 20px; }
+
+    /* Ukryte gdy nie można iść dalej/wstecz */
+    .page-nav-btn.disabled {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-50%) scale(0.85);
+    }
+
     /* ===== Uchwyty do rozciągania kart (desktop only) ===== */
     .resize-handle {
         position: absolute;
@@ -1745,12 +1789,10 @@ body {
         opacity: 1;
     }
 
-    /* Podczas aktywnego dragu — kursor na całym oknie + nie zaznaczaj
-       tekstu. body.is-resizing-card ustawia to globalnie. */
-    body.is-resizing-card {
-        cursor: ew-resize;
-        user-select: none;
-    }
+    /* Podczas aktywnego dragu — kursor na całym oknie + nie zaznaczaj tekstu */
+    body.is-resizing-card { user-select: none; }
+    body.resizing-x, body.resizing-x * { cursor: ew-resize !important; }
+    body.resizing-y, body.resizing-y * { cursor: ns-resize !important; }
     body.is-resizing-card .note-card { pointer-events: none; }
     body.is-resizing-card .resize-handle { pointer-events: auto; }
 
