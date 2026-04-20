@@ -1556,6 +1556,18 @@ body {
    ========================================================================== */
 @media (hover: hover) and (pointer: fine) and (min-width: 768px) {
 
+    /* Domyślna minimalna szerokość karty w siatce — regulowana suwakiem
+       w profilu (tylko desktop). Zapisywana w localStorage jako
+       --card-min-width ustawiane na :root przez JS. */
+    :root {
+        --card-min-width: 340px;
+    }
+
+    /* Pokaż blok "desktop-only" (suwak szerokości notatek) */
+    .desktop-only {
+        display: block !important;
+    }
+
     /* Główny kontener — szeroki, z oddechem po bokach */
     #app {
         max-width: 1180px;
@@ -1580,11 +1592,11 @@ body {
         font-size: 20px;
     }
 
-    /* Lista notatek + kosza → siatka 2–4 kolumny zależnie od szerokości */
+    /* Lista notatek + kosza → siatka regulowana przez --card-min-width */
     .notes-list {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 340px), 1fr));
+        gap: 16px;
         align-items: start;
     }
     /* Empty-state rozciąga się na całą szerokość siatki */
@@ -1592,16 +1604,30 @@ body {
         grid-column: 1 / -1;
     }
 
-    /* Karta: limit linii podglądu krótszy, żeby komórki miały
-       porównywalną wysokość w siatce */
+    /* Karta: większy padding + limit linii podglądu, żeby komórki
+       miały porównywalną wysokość w siatce */
+    .note-card {
+        padding: 20px 22px;
+        gap: 14px;
+    }
+    .note-card-icon {
+        width: 42px;
+        height: 42px;
+    }
     .note-card-preview {
         -webkit-line-clamp: 6;
+        font-size: calc(14px * var(--fs-scale));
+        line-height: 1.55;
+    }
+    .note-card-date {
+        font-size: 12px;
+        margin-top: 10px;
     }
 
     /* Wyraźniejszy hover — karta lekko się unosi */
     .note-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
         border-color: var(--amber-dim);
     }
 
@@ -1663,12 +1689,13 @@ body {
     }
 }
 
-/* Szczególnie szerokie monitory — więcej kolumn w siatce kart */
+/* Szczególnie szerokie monitory — tylko siatka motywów dostaje więcej
+   kolumn; szerokość kart notatek pilnuje suwak (--card-min-width). */
 @media (hover: hover) and (pointer: fine) and (min-width: 1200px) {
-    .notes-list {
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    }
     .theme-grid {
         grid-template-columns: repeat(8, 1fr);
     }
 }
+
+/* Ukryj elementy "desktop-only" poza kontekstem desktop */
+.desktop-only { display: none; }

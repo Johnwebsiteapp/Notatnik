@@ -502,6 +502,25 @@ if (fontSlider) {
 // Wczytaj zapisany rozmiar
 applyFontScale(localStorage.getItem('fontScale') || '1');
 
+// ===== Szerokość kart notatek (suwak desktop-only w profilu) =====
+function applyCardWidth(px) {
+    const v = Math.max(260, Math.min(520, Number(px) || 340));
+    document.documentElement.style.setProperty('--card-min-width', v + 'px');
+    const slider = document.getElementById('card-width-slider');
+    const label  = document.getElementById('cw-value');
+    if (slider && Number(slider.value) !== v) slider.value = String(v);
+    if (label) label.textContent = v + ' px';
+    localStorage.setItem('cardWidth', String(v));
+}
+
+const cwSlider = document.getElementById('card-width-slider');
+if (cwSlider) {
+    cwSlider.addEventListener('input', (e) => applyCardWidth(e.target.value));
+}
+
+// Wczytaj zapisaną szerokość
+applyCardWidth(localStorage.getItem('cardWidth') || '340');
+
 document.getElementById('logout-btn').addEventListener('click', async () => {
     if (!confirm('Wylogować? Notatki zostaną na serwerze.')) return;
     if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
