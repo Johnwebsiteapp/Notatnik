@@ -1536,6 +1536,23 @@ body {
     100% { opacity: 0; max-height: 0; margin-top: -10px; }
 }
 
+/* ===== Klikalne linki w notatkach ===== */
+.note-link {
+    color: var(--amber);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    word-break: break-all;
+    cursor: pointer;
+}
+.note-link:hover {
+    color: var(--amber-dim);
+    text-decoration-thickness: 2px;
+}
+.note-link:active {
+    opacity: 0.7;
+}
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
     width: 4px;

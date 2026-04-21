@@ -320,6 +320,8 @@ function onLoggedIn(user) {
     sync();
     subscribeRealtime();
     purgeExpiredNotes();
+    // Jeśli przyszła treść przez Web Share Target — otwórz formularz z pre-fillem
+    setTimeout(consumePendingShare, 400);
 }
 
 function subscribeRealtime() {
@@ -832,6 +834,20 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Zamienia URL-e w tekście na klikalne <a target="_blank">.
+// Wykrywa http(s)://… i www.…  Reszta pozostaje plain textem.
+// Używamy najpierw escapeHtml żeby XSS-owe teksty nie wpływały na DOM.
+function linkifyHtml(text) {
+    const escaped = escapeHtml(text);
+    return escaped.replace(
+        /\b((?:https?:\/\/|www\.)[^\s<]+[^\s<.,;:!?)'"`])/gi,
+        (url) => {
+            const href = url.match(/^https?:\/\//i) ? url : 'https://' + url;
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="note-link">${url}</a>`;
+        }
+    );
+}
+
 function noteIconSvg(type) {
     return type === 'voice'
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
@@ -1012,7 +1028,7 @@ function viewNote(id) {
     if (!note) return;
     currentViewNoteId = id;
     document.getElementById('view-note-type').textContent = note.type === 'voice' ? 'Notatka głosowa' : 'Notatka pisemna';
-    document.getElementById('view-note-content').textContent = note.content;
+    document.getElementById('view-note-content').innerHTML = linkifyHtml(note.content);
     document.getElementById('view-note-date').textContent = new Date(note.createdAt).toLocaleDateString('pl-PL', {
         day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
@@ -1075,6 +1091,27 @@ document.getElementById('view-note-content').addEventListener('input', () => {
     if (!currentViewNoteId) return;
     if (viewEditDebounce) clearTimeout(viewEditDebounce);
     viewEditDebounce = setTimeout(flushViewEdit, 700);
+});
+
+// Klik na <a> w kontentedytowalnym otwiera link zamiast stawiać kursor
+document.getElementById('view-note-content').addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(a.href, '_blank', 'noopener,noreferrer');
+});
+
+// Po zakończeniu edycji (blur) — zre-linkifikuj żeby nowe URL-e wklejone
+// w trakcie pisania stały się klikalne. Robimy to tylko gdy treść się
+// zmieniła względem zapisanej (czyli po flushu), żeby nie resetować
+// kursora podczas pisania.
+document.getElementById('view-note-content').addEventListener('blur', () => {
+    flushViewEdit();
+    if (!currentViewNoteId) return;
+    const el = document.getElementById('view-note-content');
+    const plain = el.textContent || '';
+    el.innerHTML = linkifyHtml(plain);
 });
 
 // Enter w widoku notatki: zachowujemy plain-text linebreak + auto-numerowanie list.
@@ -1613,6 +1650,54 @@ if ('serviceWorker' in navigator) {
             console.error('SW registration failed:', err);
         });
     });
+}
+
+// =============================================================================
+// Web Share Target — odbieranie treści udostępnionej z innych aplikacji
+// (Android: TikTok/FB/Messenger/Chrome → "Udostępnij" → Notatnik)
+// =============================================================================
+// Przy starcie czytamy parametry z URL-a; jeśli ktoś "udostępnił" nam tekst,
+// zapisujemy go w sessionStorage i po zalogowaniu otwieramy ekran nowej
+// notatki z pre-fillowaną treścią.
+
+(function captureIncomingShare() {
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get('shared_title');
+    const text  = params.get('shared_text');
+    const url   = params.get('shared_url');
+    if (!title && !text && !url) return;
+    sessionStorage.setItem('pendingShare', JSON.stringify({ title, text, url }));
+    // Wyczyść URL, żeby odświeżenie strony nie odpalało importu ponownie
+    history.replaceState({}, '', window.location.pathname);
+})();
+
+function consumePendingShare() {
+    const raw = sessionStorage.getItem('pendingShare');
+    if (!raw) return;
+    sessionStorage.removeItem('pendingShare');
+
+    let data;
+    try { data = JSON.parse(raw); } catch { return; }
+
+    const parts = [];
+    if (data.title) parts.push(data.title);
+    if (data.text)  parts.push(data.text);
+    if (data.url)   parts.push(data.url);
+    const content = parts.filter(Boolean).join('\n\n').trim();
+    if (!content) return;
+
+    // Otwórz ekran notatki tekstowej z pre-fillowaną treścią
+    currentEditNoteId = null;
+    const ta = document.getElementById('text-note-content');
+    if (!ta) return;
+    ta.value = content;
+    document.querySelector('#text-note-screen .screen-title').textContent = 'Udostępniona treść';
+    showOverlay('text-note-screen');
+    // Kursor na końcu (żeby user mógł dopisać coś jeszcze)
+    setTimeout(() => {
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 350);
 }
 
 // =============================================================================
