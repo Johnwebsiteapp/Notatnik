@@ -1798,6 +1798,12 @@ body {
         transform: translateY(-50%) scale(0.85);
     }
 
+    /* Schowaj strzałki nawigacji gdy otwarty jest overlay edycji/podglądu/kosza —
+       pager wtedy i tak nie widać, a strzałki zachodziłyby na przyciski formularza. */
+    body:has(.screen.active:not(#auth-screen)) .page-nav-btn {
+        display: none;
+    }
+
     /* ===== Uchwyty do rozciągania kart (desktop only) ===== */
     .resize-handle {
         position: absolute;
