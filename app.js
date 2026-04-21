@@ -317,17 +317,16 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// Polling fallback — co 20 sekund gdy tab aktywny i online.
-// To ubezpieczenie na wypadek, gdyby Realtime w Supabase nie był włączony
-// na tabeli `notes` (domyślnie nie jest), albo websocket po czasie padł.
-// Overhead: jeden mały SELECT * FROM notes WHERE updated_at > lastSync
-// co 20 s — praktycznie nic, w większości przypadków wraca pusty wynik.
+// Polling fallback — sync praktycznie natychmiastowy (co 3 s).
+// Cena: ~20 małych zapytań/minuta gdy tab widoczny, każde to
+// SELECT WHERE updated_at > lastSync, większość wraca pusto.
+// Gdy tab niewidoczny → ani razu, czyli bateria nie cierpi.
 setInterval(() => {
     if (!currentUser) return;
     if (!navigator.onLine) return;
     if (document.visibilityState !== 'visible') return;
     sync();
-}, 20000);
+}, 3000);
 
 // =============================================================================
 // Auth
