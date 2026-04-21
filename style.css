@@ -1693,10 +1693,29 @@ body {
         display: flex;
         flex-direction: column;
         gap: 14px;
-        max-width: 760px;
-        margin: 0 auto;
+        max-width: 780px;
+        margin: 8px auto 16px;
         width: 100%;
-        padding-bottom: 16px;
+        padding: 22px 26px;
+        /* Wyróżnienie "okna" edycji — jasne obramowanie + cień */
+        background: var(--surface);
+        border: 1.5px solid rgba(255, 255, 255, 0.22);
+        border-radius: 18px;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5),
+                    0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    /* Textarea / transcript wewnątrz karty — bez własnego obramowania,
+       żeby nie dublować "ramki w ramce"; focus delikatnie podświetla */
+    #text-note-screen .note-content-input,
+    #voice-note-screen .voice-transcript {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.18);
+    }
+    #text-note-screen .note-content-input:focus,
+    #voice-note-screen .voice-transcript:focus {
+        border-color: rgba(255, 255, 255, 0.35);
+        background: rgba(0, 0, 0, 0.25);
     }
     /* Textarea / transcript: wypełniają pozostałą wysokość */
     #text-note-screen .note-content-input {
