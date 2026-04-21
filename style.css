@@ -1705,17 +1705,17 @@ body {
                     0 0 0 1px rgba(255, 255, 255, 0.04);
     }
 
-    /* Textarea / transcript wewnątrz karty — bez własnego obramowania,
-       żeby nie dublować "ramki w ramce"; focus delikatnie podświetla */
+    /* Textarea / transcript wewnątrz karty — bez własnego obramowania
+       (ramka jest na całym "oknie" formularza, żeby nie było ramki w ramce). */
     #text-note-screen .note-content-input,
     #voice-note-screen .voice-transcript {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(0, 0, 0, 0.18);
+        border: none;
+        background: transparent;
+        padding: 8px 0;
     }
     #text-note-screen .note-content-input:focus,
     #voice-note-screen .voice-transcript:focus {
-        border-color: rgba(255, 255, 255, 0.35);
-        background: rgba(0, 0, 0, 0.25);
+        outline: none;
     }
     /* Textarea / transcript: wypełniają pozostałą wysokość */
     #text-note-screen .note-content-input {
@@ -1817,10 +1817,12 @@ body {
         transform: translateY(-50%) scale(0.85);
     }
 
-    /* Schowaj strzałki nawigacji gdy otwarty jest overlay edycji/podglądu/kosza —
-       pager wtedy i tak nie widać, a strzałki zachodziłyby na przyciski formularza. */
-    body:has(.screen.active:not(#auth-screen)) .page-nav-btn {
-        display: none;
+    /* Schowaj strzałki nawigacji gdy otwarty jest overlay edycji/podglądu/kosza.
+       Dwie ścieżki: :has() dla nowych przeglądarek, .overlay-open na <body>
+       dorzucane z JS jako fallback. */
+    body:has(.screen.active:not(#auth-screen)) .page-nav-btn,
+    body.overlay-open .page-nav-btn {
+        display: none !important;
     }
 
     /* ===== Uchwyty do rozciągania kart (desktop only) ===== */

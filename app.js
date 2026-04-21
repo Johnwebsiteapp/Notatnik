@@ -651,6 +651,7 @@ function showOverlay(id) {
         flushViewEdit();
     }
     document.getElementById(id).classList.add('active');
+    if (id !== 'auth-screen') document.body.classList.add('overlay-open');
 }
 
 function hideAllOverlays() {
@@ -659,6 +660,7 @@ function hideAllOverlays() {
         flushViewEdit();
     }
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active', 'slide-out-left'));
+    document.body.classList.remove('overlay-open');
 }
 
 // =============================================================================
