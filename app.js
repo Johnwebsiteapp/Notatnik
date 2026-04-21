@@ -155,14 +155,23 @@ function setSyncStatus(status) {
     ind.classList.remove('synced', 'syncing', 'offline', 'error');
     ind.classList.add(status);
     const titles = {
-        synced:  'Zsynchronizowano',
+        synced:  'Zsynchronizowano — kliknij, aby zsynchronizować ręcznie',
         syncing: 'Synchronizacja...',
         offline: 'Offline — zmiany zapiszą się lokalnie',
-        error:   'Błąd synchronizacji — spróbuję ponownie'
+        error:   'Błąd synchronizacji — kliknij, aby spróbować ponownie'
     };
     ind.title = titles[status] || '';
     updateOfflineBanner(status);
 }
+
+// Kliknięcie w indykator synchronizacji — wymuś ręczny sync
+// + reset realtime gdyby kanał padł
+document.getElementById('sync-indicator')?.addEventListener('click', () => {
+    if (!currentUser) return;
+    if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+    sync();
+    if (navigator.onLine) subscribeRealtime();
+});
 
 // Banner offline — widoczny na liście notatek, pokazuje liczbę zmian
 // czekających na wysłanie. Znika gdy wszystko zsynchronizowane.
@@ -297,6 +306,28 @@ window.addEventListener('online', () => {
 });
 window.addEventListener('offline', () => setSyncStatus('offline'));
 window.addEventListener('focus',   () => { if (currentUser) sync(); });
+
+// visibilitychange — lepszy niż focus dla PWA/telefonów
+// (focus nie zawsze odpala po wznowieniu aplikacji w standalone mode)
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser) {
+        sync();
+        // Odśwież też połączenie realtime jeśli zdążyło umrzeć
+        if (navigator.onLine && !realtimeChannel) subscribeRealtime();
+    }
+});
+
+// Polling fallback — co 20 sekund gdy tab aktywny i online.
+// To ubezpieczenie na wypadek, gdyby Realtime w Supabase nie był włączony
+// na tabeli `notes` (domyślnie nie jest), albo websocket po czasie padł.
+// Overhead: jeden mały SELECT * FROM notes WHERE updated_at > lastSync
+// co 20 s — praktycznie nic, w większości przypadków wraca pusty wynik.
+setInterval(() => {
+    if (!currentUser) return;
+    if (!navigator.onLine) return;
+    if (document.visibilityState !== 'visible') return;
+    sync();
+}, 20000);
 
 // =============================================================================
 // Auth

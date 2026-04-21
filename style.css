@@ -1210,6 +1210,17 @@ body {
 .sync-indicator {
     font-size: 10px;
     line-height: 1;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    transition: background 0.15s, transform 0.15s;
+}
+.sync-indicator:hover {
+    background: var(--surface-hover);
+    transform: scale(1.15);
+}
+.sync-indicator:active {
+    transform: scale(0.9);
 }
 .sync-indicator.synced   { color: #5fa86d; }
 .sync-indicator.syncing  { color: var(--amber); animation: pulse-sync 1s ease-in-out infinite; }
