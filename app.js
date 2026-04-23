@@ -28,7 +28,125 @@ function getNotes() {
 function saveNotes(notes) {
     const k = notesKey();
     if (!k) return;
+    // Zabezpieczenie przed utratą treści: jeśli nowa wersja notatki
+    // jest dramatycznie krótsza (>70% ubytku przy starej >200 znaków),
+    // zapisz starą wersję w "koszu awaryjnym" na 5 minut z tostem do
+    // przywrócenia. Chroni przed race condition lub pomyłką.
+    try {
+        const oldRaw = localStorage.getItem(k);
+        if (oldRaw) {
+            const oldNotes = JSON.parse(oldRaw);
+            const oldById = new Map(oldNotes.map(n => [n.id, n]));
+            for (const n of notes) {
+                maybeBackupBeforeOverwrite(oldById.get(n.id), n);
+            }
+        }
+    } catch (e) { /* ignore */ }
     localStorage.setItem(k, JSON.stringify(notes));
+}
+
+// ===== Kosz awaryjny (backup na 5 min przed utratą treści) =====
+const EMERGENCY_BACKUP_MS = 5 * 60 * 1000; // 5 min
+
+function emergencyBackupKey(noteId) { return 'emergencyBackup:' + noteId; }
+
+function maybeBackupBeforeOverwrite(oldNote, newNote) {
+    if (!oldNote || !newNote) return;
+    const oldLen = (oldNote.content || '').length;
+    const newLen = (newNote.content || '').length;
+    // Wyzwalacz (dla notatek >= 100 znaków): nowa wersja jest
+    //  - < 80% starej (czyli >=20% ubytku), LUB
+    //  - krótsza o >= 100 znaków (duży absolutny ubytek)
+    // Dzięki temu łapie też przypadki typu 500→400 czy 1000→850.
+    if (oldLen < 100) return;
+    const lost = oldLen - newLen;
+    const bigPercent   = newLen <= oldLen * 0.8;
+    const bigAbsolute  = lost >= 100;
+    if (!bigPercent && !bigAbsolute) return;
+
+    // Nie nadpisuj świeżego backupu (zachowaj najstarszą/najpełniejszą wersję)
+    const existing = localStorage.getItem(emergencyBackupKey(oldNote.id));
+    if (existing) {
+        try {
+            const e = JSON.parse(existing);
+            if (Date.now() - (e.savedAt || 0) < EMERGENCY_BACKUP_MS) return;
+        } catch { /* bad json — zastąp */ }
+    }
+
+    try {
+        localStorage.setItem(emergencyBackupKey(oldNote.id), JSON.stringify({
+            content: oldNote.content,
+            title: oldNote.title || '',
+            type: oldNote.type,
+            savedAt: Date.now(),
+            oldLen, newLen
+        }));
+        showEmergencyBackupToast(oldNote.id, oldLen, newLen);
+    } catch (e) { /* quota — nie krzycz */ }
+}
+
+function cleanupExpiredBackups() {
+    const now = Date.now();
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('emergencyBackup:')) continue;
+        try {
+            const e = JSON.parse(localStorage.getItem(key));
+            if (!e.savedAt || now - e.savedAt > EMERGENCY_BACKUP_MS) {
+                localStorage.removeItem(key);
+            }
+        } catch { localStorage.removeItem(key); }
+    }
+}
+setInterval(cleanupExpiredBackups, 60 * 1000);
+cleanupExpiredBackups();
+
+function restoreEmergencyBackup(noteId) {
+    const raw = localStorage.getItem(emergencyBackupKey(noteId));
+    if (!raw) { alert('Backup wygasł lub został już przywrócony.'); return; }
+    let b;
+    try { b = JSON.parse(raw); } catch { return; }
+    updateNote(noteId, { content: b.content });
+    localStorage.removeItem(emergencyBackupKey(noteId));
+    renderNotes();
+    hideEmergencyBackupToast(noteId);
+}
+
+function dismissEmergencyBackup(noteId) {
+    localStorage.removeItem(emergencyBackupKey(noteId));
+    hideEmergencyBackupToast(noteId);
+}
+
+function showEmergencyBackupToast(noteId, oldLen, newLen) {
+    hideEmergencyBackupToast(noteId); // nie dubluj
+    const toast = document.createElement('div');
+    toast.className = 'emergency-backup-toast';
+    toast.dataset.noteId = noteId;
+    toast.innerHTML = `
+        <div class="ebt-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+        </div>
+        <div class="ebt-text">
+            <strong>Wykryto skrócenie notatki</strong>
+            <span>${oldLen} → ${newLen} znaków. Poprzednia wersja zachowana przez 5 min.</span>
+        </div>
+        <button class="ebt-restore">Przywróć</button>
+        <button class="ebt-dismiss" aria-label="Odrzuć">×</button>
+    `;
+    toast.querySelector('.ebt-restore').addEventListener('click', () => restoreEmergencyBackup(noteId));
+    toast.querySelector('.ebt-dismiss').addEventListener('click', () => dismissEmergencyBackup(noteId));
+    document.body.appendChild(toast);
+    // Po 5 min — auto-usunięcie (zsynchronizowane z wygaśnięciem backupu)
+    setTimeout(() => hideEmergencyBackupToast(noteId), EMERGENCY_BACKUP_MS);
+}
+
+function hideEmergencyBackupToast(noteId) {
+    const t = document.querySelector(`.emergency-backup-toast[data-note-id="${noteId}"]`);
+    if (t) t.remove();
 }
 
 function visibleNotes() {
