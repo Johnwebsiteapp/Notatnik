@@ -282,7 +282,30 @@ async function sync() {
             if (!pullStamp || r.updated_at > pullStamp) pullStamp = r.updated_at;
         }
 
-        saveNotes(Array.from(byId.values()));
+        // KRYTYCZNE: race-safe merge przed finalnym zapisem.
+        // Jeśli user coś zapisał (np. zakończył dyktowanie długiej notatki)
+        // w trakcie trwania tego sync-a, w localStorage jest świeża wersja
+        // z pending=true lub nowszym updatedAt. Bez tego merge'u final
+        // saveNotes nadpisałby jego zapis swoim snapshotem sprzed zmiany,
+        // kasując treść. To było źródło zgłoszonego "wróciłem a notatki 1/10".
+        const latest = getNotes();
+        for (const cn of latest) {
+            const ours = byId.get(cn.id);
+            const userWroteDuringSync =
+                cn.pending === true ||
+                (ours && new Date(cn.updatedAt) > new Date(ours.updatedAt || 0));
+            if (!ours || userWroteDuringSync) {
+                byId.set(cn.id, cn);
+            }
+        }
+
+        try {
+            saveNotes(Array.from(byId.values()));
+        } catch (e) {
+            console.error('saveNotes failed (quota?):', e);
+            alert('Uwaga: brak miejsca w pamięci przeglądarki. Wyczyść kosz lub usuń najdłuższe notatki, żeby móc zapisywać kolejne.');
+            throw e;
+        }
         if (pullStamp) localStorage.setItem(lastSyncKey(), pullStamp);
 
         setSyncStatus('synced');
@@ -321,10 +344,17 @@ document.addEventListener('visibilitychange', () => {
 // Cena: ~20 małych zapytań/minuta gdy tab widoczny, każde to
 // SELECT WHERE updated_at > lastSync, większość wraca pusto.
 // Gdy tab niewidoczny → ani razu, czyli bateria nie cierpi.
+// Gdy user AKTYWNIE edytuje notatkę (voice/text screen) → również pauza,
+// żeby sync nie wchodził w paradę dyktowaniu (ochrona przed race condition).
+function isActivelyEditing() {
+    return document.getElementById('voice-note-screen').classList.contains('active') ||
+           document.getElementById('text-note-screen').classList.contains('active');
+}
 setInterval(() => {
     if (!currentUser) return;
     if (!navigator.onLine) return;
     if (document.visibilityState !== 'visible') return;
+    if (isActivelyEditing()) return;
     sync();
 }, 3000);
 
@@ -1225,9 +1255,28 @@ document.getElementById('open-voice-btn').addEventListener('click', () => {
 
     currentEditNoteId = null;
 
-    document.getElementById('voice-note-content').textContent = '';
-    finalTranscript = '';
-    sessionStartTranscript = '';
+    // Sprawdź czy jest zapisany draft z poprzedniej (niezakończonej) sesji
+    let initialContent = '';
+    try {
+        const raw = localStorage.getItem('voiceDraft');
+        if (raw) {
+            const draft = JSON.parse(raw);
+            const ageHours = (Date.now() - (draft.savedAt || 0)) / (1000 * 60 * 60);
+            if (draft.content && ageHours < 24 && !draft.editNoteId) {
+                if (confirm(`Masz niezapisany draft sprzed ${Math.round(ageHours * 60)} min (${draft.content.length} znaków). Przywrócić?`)) {
+                    initialContent = draft.content;
+                } else {
+                    clearVoiceDraft();
+                }
+            } else if (ageHours >= 24) {
+                clearVoiceDraft();
+            }
+        }
+    } catch (e) { /* ignore */ }
+
+    document.getElementById('voice-note-content').textContent = initialContent;
+    finalTranscript = initialContent;
+    sessionStartTranscript = initialContent;
     recSeconds = 0;
     document.getElementById('recorder-time').textContent = '00:00';
     document.getElementById('recording-status').textContent = 'Kliknij aby nagrywać';
@@ -1525,6 +1574,32 @@ function buildRecognition() {
     return r;
 }
 
+// Auto-save draftu dyktowania — zabezpieczenie na wypadek crashu
+// przeglądarki lub padnięcia tabu. Co 5 sek zapisuje bieżący finalTranscript
+// do localStorage; przywracane jest przy następnym otwarciu ekranu głosowego.
+let voiceDraftTimer = null;
+function startVoiceDraftAutosave() {
+    stopVoiceDraftAutosave();
+    voiceDraftTimer = setInterval(() => {
+        if (!isRecording) return;
+        const content = finalTranscript || '';
+        if (!content) return;
+        try {
+            localStorage.setItem('voiceDraft', JSON.stringify({
+                content,
+                editNoteId: currentEditNoteId,
+                savedAt: Date.now()
+            }));
+        } catch (e) { /* quota — ignoruj */ }
+    }, 5000);
+}
+function stopVoiceDraftAutosave() {
+    if (voiceDraftTimer) { clearInterval(voiceDraftTimer); voiceDraftTimer = null; }
+}
+function clearVoiceDraft() {
+    localStorage.removeItem('voiceDraft');
+}
+
 function startRecording() {
     // Zanim stworzymy recognition — zapamiętaj obecny tekst jako bazę
     // dla nowej sesji. Wszystkie wyniki z tej sesji zostaną doklejone
@@ -1545,6 +1620,7 @@ function startRecording() {
     }
     isRecording = true;
     acquireWakeLock();
+    startVoiceDraftAutosave();
 
     recSeconds = 0;
     updateTimerDisplay();
@@ -1565,6 +1641,7 @@ function stopRecording() {
         isRecording = false;
     }
     if (recTimer) { clearInterval(recTimer); recTimer = null; }
+    stopVoiceDraftAutosave();
     releaseWakeLock();
 
     const circle = document.getElementById('recorder-circle');
@@ -1596,12 +1673,14 @@ document.getElementById('save-voice-note').addEventListener('click', () => {
     } else {
         addNote({ title: '', content, type: 'voice' });
     }
+    clearVoiceDraft();
     hideAllOverlays();
     renderNotes();
 });
 
 document.getElementById('discard-voice').addEventListener('click', () => {
     stopRecording();
+    clearVoiceDraft();
     currentEditNoteId = null;
     hideAllOverlays();
 });
