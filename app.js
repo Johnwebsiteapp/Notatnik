@@ -45,8 +45,8 @@ function saveNotes(notes) {
     localStorage.setItem(k, JSON.stringify(notes));
 }
 
-// ===== Kosz awaryjny (backup na 5 min przed utratą treści) =====
-const EMERGENCY_BACKUP_MS = 5 * 60 * 1000; // 5 min
+// ===== Kosz awaryjny (backup na 48h przed utratą treści) =====
+const EMERGENCY_BACKUP_MS = 48 * 60 * 60 * 1000; // 48h
 
 function emergencyBackupKey(noteId) { return 'emergencyBackup:' + noteId; }
 
@@ -132,7 +132,7 @@ function showEmergencyBackupToast(noteId, oldLen, newLen) {
         </div>
         <div class="ebt-text">
             <strong>Wykryto skrócenie notatki</strong>
-            <span>${oldLen} → ${newLen} znaków. Poprzednia wersja zachowana przez 5 min.</span>
+            <span>${oldLen} → ${newLen} znaków. Poprzednia wersja zachowana przez 48h.</span>
         </div>
         <button class="ebt-restore">Przywróć</button>
         <button class="ebt-dismiss" aria-label="Odrzuć">×</button>
